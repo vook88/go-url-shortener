@@ -9,10 +9,6 @@ import (
 	"strings"
 )
 
-var (
-	storage = make(map[string]string)
-)
-
 func generateID() (string, error) {
 	b := make([]byte, 6) // генерирует 8 символов после base64 кодирования
 	_, err := rand.Read(b)
@@ -22,7 +18,7 @@ func generateID() (string, error) {
 	return base64.URLEncoding.EncodeToString(b), nil
 }
 
-func generateShortUrl(res http.ResponseWriter, req *http.Request) {
+func generateShortUrl(storage URLStorage, res http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {
 		http.Error(res, "Only POST requests are allowed!", http.StatusBadRequest)
 		return
@@ -36,12 +32,11 @@ func generateShortUrl(res http.ResponseWriter, req *http.Request) {
 	}(req.Body) // Важно закрыть тело запроса
 
 	if err != nil {
-		// Обработка ошибки
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
 	}
 	id, _ := generateID()
-	storage[id] = string(url)
+	storage.AddURL(id, string(url))
 
 	res.WriteHeader(http.StatusCreated)
 	_, err = fmt.Fprintf(res, "http://localhost:8080/%s", id)
@@ -50,13 +45,13 @@ func generateShortUrl(res http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func getShortUrl(res http.ResponseWriter, req *http.Request) {
+func getShortUrl(storage URLStorage, res http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
 		http.Error(res, "Only GET requests are allowed!", http.StatusBadRequest)
 		return
 	}
 	id := strings.TrimPrefix(req.URL.Path, "/")
-	url, ok := storage[id]
+	url, ok := storage.GetURL(id)
 	if !ok {
 		http.Error(res, "", http.StatusBadRequest)
 		return
@@ -64,18 +59,21 @@ func getShortUrl(res http.ResponseWriter, req *http.Request) {
 	http.Redirect(res, req, url, http.StatusTemporaryRedirect)
 }
 
-func handleRequests(res http.ResponseWriter, req *http.Request) {
+func handleRequests(storage URLStorage, res http.ResponseWriter, req *http.Request) {
 	url := req.URL.Path
 	if url == "/" {
-		generateShortUrl(res, req)
+		generateShortUrl(storage, res, req)
 		return
 	}
-	getShortUrl(res, req)
+	getShortUrl(storage, res, req)
 }
 
 func main() {
+	storage := NewMemoryURLStorage()
 	mux := http.NewServeMux()
-	mux.HandleFunc(`/`, handleRequests)
+	mux.HandleFunc(`/`, func(w http.ResponseWriter, r *http.Request) {
+		handleRequests(storage, w, r)
+	})
 
 	err := http.ListenAndServe(`:8080`, mux)
 	if err != nil {
