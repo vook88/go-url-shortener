@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func generateID() (string, error) {
@@ -59,23 +61,17 @@ func getShortUrl(storage URLStorage, res http.ResponseWriter, req *http.Request)
 	http.Redirect(res, req, url, http.StatusTemporaryRedirect)
 }
 
-func handleRequests(storage URLStorage, res http.ResponseWriter, req *http.Request) {
-	url := req.URL.Path
-	if url == "/" {
-		generateShortUrl(storage, res, req)
-		return
-	}
-	getShortUrl(storage, res, req)
-}
-
 func main() {
 	storage := NewMemoryURLStorage()
-	mux := http.NewServeMux()
-	mux.HandleFunc(`/`, func(w http.ResponseWriter, r *http.Request) {
-		handleRequests(storage, w, r)
+	r := chi.NewRouter()
+	r.Post("/", func(w http.ResponseWriter, r *http.Request) {
+		generateShortUrl(storage, w, r)
+	})
+	r.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
+		getShortUrl(storage, w, r)
 	})
 
-	err := http.ListenAndServe(`:8080`, mux)
+	err := http.ListenAndServe(`:8080`, r)
 	if err != nil {
 		panic(err)
 	}
