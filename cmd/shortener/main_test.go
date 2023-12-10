@@ -24,14 +24,14 @@ func TestGenerateShortUrl(t *testing.T) {
 			w := httptest.NewRecorder()
 
 			// вызовем хендлер как обычную функцию, без запуска самого сервера
-			generateShortUrl(storage, w, r)
+			generateShortURL(storage, w, r)
 
 			assert.Equal(t, tc.expectedCode, w.Code, "Код ответа не совпадает с ожидаемым")
 		})
 	}
 }
 
-func TestGetShortUrl(t *testing.T) {
+func TestGetShortURL(t *testing.T) {
 	testCases := []struct {
 		method       string
 		expectedCode int
@@ -51,7 +51,7 @@ func TestGetShortUrl(t *testing.T) {
 			w := httptest.NewRecorder()
 
 			// вызовем хендлер как обычную функцию, без запуска самого сервера
-			getShortUrl(storage, w, r)
+			getShortURL(storage, w, r)
 
 			assert.Equal(t, tc.expectedCode, w.Code, "Код ответа не совпадает с ожидаемым")
 
