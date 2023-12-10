@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"github.com/vook88/go-url-shortener/cmd/config"
 	"io"
 	"net/http"
 	"strings"
@@ -20,7 +21,7 @@ func generateID() (string, error) {
 	return base64.URLEncoding.EncodeToString(b), nil
 }
 
-func generateShortURL(storage URLStorage, res http.ResponseWriter, req *http.Request) {
+func generateShortURL(cfg *config.Config, storage URLStorage, res http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {
 		http.Error(res, "Only POST requests are allowed!", http.StatusBadRequest)
 		return
@@ -36,7 +37,7 @@ func generateShortURL(storage URLStorage, res http.ResponseWriter, req *http.Req
 	storage.AddURL(id, string(url))
 
 	res.WriteHeader(http.StatusCreated)
-	_, err = fmt.Fprintf(res, "http://localhost:8080/%s", id)
+	_, err = fmt.Fprintf(res, "%s/%s", cfg.BaseURL, id)
 	if err != nil {
 		return
 	}
@@ -57,16 +58,17 @@ func getShortURL(storage URLStorage, res http.ResponseWriter, req *http.Request)
 }
 
 func main() {
+	cfg := config.NewConfig()
 	storage := NewMemoryURLStorage()
 	r := chi.NewRouter()
 	r.Post("/", func(w http.ResponseWriter, r *http.Request) {
-		generateShortURL(storage, w, r)
+		generateShortURL(cfg, storage, w, r)
 	})
 	r.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
 		getShortURL(storage, w, r)
 	})
 
-	err := http.ListenAndServe(`:8080`, r)
+	err := http.ListenAndServe(cfg.ServerAddress, r)
 	if err != nil {
 		panic(err)
 	}
