@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/stretchr/testify/assert"
+	"github.com/vook88/go-url-shortener/cmd/config"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,6 +18,10 @@ func TestGenerateShortUrl(t *testing.T) {
 		{method: http.MethodDelete, expectedCode: http.StatusBadRequest},
 		{method: http.MethodPost, expectedCode: http.StatusCreated},
 	}
+	cfg := &config.Config{
+		ServerAddress: "localhost:8080",
+		BaseURL:       "http://localhost:8080/",
+	}
 	storage := NewMemoryURLStorage()
 	for _, tc := range testCases {
 		t.Run(tc.method, func(t *testing.T) {
@@ -24,7 +29,7 @@ func TestGenerateShortUrl(t *testing.T) {
 			w := httptest.NewRecorder()
 
 			// вызовем хендлер как обычную функцию, без запуска самого сервера
-			generateShortURL(storage, w, r)
+			generateShortURL(cfg, storage, w, r)
 
 			assert.Equal(t, tc.expectedCode, w.Code, "Код ответа не совпадает с ожидаемым")
 		})
