@@ -20,7 +20,7 @@ func generateID() (string, error) {
 	return base64.URLEncoding.EncodeToString(b), nil
 }
 
-func generateShortUrl(storage URLStorage, res http.ResponseWriter, req *http.Request) {
+func generateShortURL(storage URLStorage, res http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {
 		http.Error(res, "Only POST requests are allowed!", http.StatusBadRequest)
 		return
@@ -47,7 +47,7 @@ func generateShortUrl(storage URLStorage, res http.ResponseWriter, req *http.Req
 	}
 }
 
-func getShortUrl(storage URLStorage, res http.ResponseWriter, req *http.Request) {
+func getShortURL(storage URLStorage, res http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
 		http.Error(res, "Only GET requests are allowed!", http.StatusBadRequest)
 		return
@@ -65,10 +65,10 @@ func main() {
 	storage := NewMemoryURLStorage()
 	r := chi.NewRouter()
 	r.Post("/", func(w http.ResponseWriter, r *http.Request) {
-		generateShortUrl(storage, w, r)
+		generateShortURL(storage, w, r)
 	})
 	r.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
-		getShortUrl(storage, w, r)
+		getShortURL(storage, w, r)
 	})
 
 	err := http.ListenAndServe(`:8080`, r)
