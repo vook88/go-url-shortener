@@ -26,21 +26,25 @@ func generateShortURL(cfg *config.Config, storage URLStorage, res http.ResponseW
 		http.Error(res, "Only POST requests are allowed!", http.StatusBadRequest)
 		return
 	}
-	url, err := io.ReadAll(req.Body)
 	defer req.Body.Close()
 
+	url, err := io.ReadAll(req.Body)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
 	}
-	id, _ := generateID()
+
+	id, err := generateID()
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	storage.AddURL(id, string(url))
 
 	res.WriteHeader(http.StatusCreated)
-	_, err = fmt.Fprintf(res, "%s/%s", cfg.BaseURL, id)
-	if err != nil {
-		return
-	}
+	_, _ = fmt.Fprintf(res, "%s/%s", cfg.BaseURL, id)
+
 }
 
 func getShortURL(storage URLStorage, res http.ResponseWriter, req *http.Request) {
