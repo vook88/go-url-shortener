@@ -40,7 +40,11 @@ func generateShortURL(cfg *config.Config, storage URLStorage, res http.ResponseW
 		return
 	}
 
-	storage.AddURL(id, string(url))
+	err = storage.AddURL(id, string(url))
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	res.WriteHeader(http.StatusCreated)
 	_, _ = fmt.Fprintf(res, "%s/%s", cfg.BaseURL, id)
