@@ -4,12 +4,12 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"github.com/vook88/go-url-shortener/cmd/config"
 	"io"
 	"net/http"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/vook88/go-url-shortener/cmd/config"
 )
 
 func generateID() (string, error) {
@@ -63,6 +63,12 @@ func getShortURL(storage URLStorage, res http.ResponseWriter, req *http.Request)
 
 func main() {
 	cfg := config.NewConfig()
+	if err := run(cfg); err != nil {
+		panic(err)
+	}
+}
+
+func run(cfg *config.Config) error {
 	storage := NewMemoryURLStorage()
 	r := chi.NewRouter()
 	r.Post("/", func(w http.ResponseWriter, r *http.Request) {
@@ -74,6 +80,7 @@ func main() {
 
 	err := http.ListenAndServe(cfg.ServerAddress, r)
 	if err != nil {
-		panic(err)
+		return err
 	}
+	return nil
 }

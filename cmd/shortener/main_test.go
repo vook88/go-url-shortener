@@ -1,11 +1,12 @@
 package main
 
 import (
-	"github.com/stretchr/testify/assert"
-	"github.com/vook88/go-url-shortener/cmd/config"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/vook88/go-url-shortener/cmd/config"
 )
 
 func TestGenerateShortUrl(t *testing.T) {
