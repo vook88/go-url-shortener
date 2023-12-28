@@ -23,20 +23,20 @@ func (s *Server) generateShortURL(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	shortId, err := id.New()
+	shortID, err := id.New()
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	err = s.storage.AddURL(shortId, string(url))
+	err = s.storage.AddURL(shortID, string(url))
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	res.WriteHeader(http.StatusCreated)
-	_, _ = fmt.Fprintf(res, "%s/%s", s.baseURL, shortId)
+	_, _ = fmt.Fprintf(res, "%s/%s", s.baseURL, shortID)
 }
 
 func (s *Server) getShortURL(res http.ResponseWriter, req *http.Request) {
