@@ -1,13 +1,39 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
-	"github.com/vook88/go-url-shortener/cmd/config"
+
+	"github.com/vook88/go-url-shortener/internal/server"
+	storage2 "github.com/vook88/go-url-shortener/internal/storage"
 )
+
+func setupServer() (*server.Server, *chi.Mux) {
+	mockStorage := storage2.New()
+	return server.New(":8080", "https://example.com", mockStorage)
+}
+
+func trimDomainAndSlash(rawURL string) (string, error) {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+
+	// Удаление первого слэша из пути
+	trimmedPath := parsedURL.Path
+	if len(trimmedPath) > 0 && trimmedPath[0] == '/' {
+		trimmedPath = trimmedPath[1:]
+	}
+
+	return trimmedPath, nil
+}
 
 func TestGenerateShortUrl(t *testing.T) {
 	testCases := []struct {
@@ -19,20 +45,16 @@ func TestGenerateShortUrl(t *testing.T) {
 		{method: http.MethodDelete, expectedCode: http.StatusBadRequest},
 		{method: http.MethodPost, expectedCode: http.StatusCreated},
 	}
-	cfg := &config.Config{
-		ServerAddress: "localhost:8080",
-		BaseURL:       "http://localhost:8080/",
-	}
-	storage := NewMemoryURLStorage()
+	_, router := setupServer()
 	for _, tc := range testCases {
 		t.Run(tc.method, func(t *testing.T) {
-			r := httptest.NewRequest(tc.method, "/", nil)
-			w := httptest.NewRecorder()
 
-			// вызовем хендлер как обычную функцию, без запуска самого сервера
-			generateShortURL(cfg, storage, w, r)
+			body := bytes.NewBufferString(`{"url": "https://longurl.com"}`)
+			request, _ := http.NewRequest(tc.method, "/", body)
+			response := httptest.NewRecorder()
 
-			assert.Equal(t, tc.expectedCode, w.Code, "Код ответа не совпадает с ожидаемым")
+			router.ServeHTTP(response, request)
+			assert.Equal(t, tc.expectedCode, response.Code, "Код ответа не совпадает с ожидаемым")
 		})
 	}
 }
@@ -47,22 +69,29 @@ func TestGetShortURL(t *testing.T) {
 		{method: http.MethodDelete, expectedCode: http.StatusBadRequest},
 		{method: http.MethodPost, expectedCode: http.StatusBadRequest},
 	}
-	storage := NewMemoryURLStorage()
-	id := "xxx"
-	url := "http://localhost"
-	storage.AddURL(id, url)
+	_, router := setupServer()
+
+	testUrl := "https://longurl.com"
+	body := bytes.NewBufferString(testUrl)
+	request, _ := http.NewRequest(http.MethodPost, "/", body)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	id, err := trimDomainAndSlash(response.Body.String())
+	if err != nil {
+		fmt.Println("Ошибка при разборе URL:", err)
+		return
+	}
+
 	for _, tc := range testCases {
 		t.Run(tc.method, func(t *testing.T) {
-			r := httptest.NewRequest(tc.method, "/"+id, nil)
-			w := httptest.NewRecorder()
+			request1, _ := http.NewRequest(tc.method, `/`+id, nil)
+			response1 := httptest.NewRecorder()
+			router.ServeHTTP(response1, request1)
 
-			// вызовем хендлер как обычную функцию, без запуска самого сервера
-			getShortURL(storage, w, r)
-
-			assert.Equal(t, tc.expectedCode, w.Code, "Код ответа не совпадает с ожидаемым")
+			assert.Equal(t, tc.expectedCode, response1.Code, "Код ответа не совпадает с ожидаемым")
 
 			if tc.method == http.MethodGet {
-				assert.Equal(t, w.Header().Get("Location"), url)
+				assert.Equal(t, response1.Header().Get("Location"), testUrl)
 			}
 
 		})
