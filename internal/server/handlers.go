@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/vook88/go-url-shortener/internal/id"
 )
@@ -43,7 +44,7 @@ func (s *Server) getShortURL(res http.ResponseWriter, req *http.Request) {
 		http.Error(res, "Only GET requests are allowed!", http.StatusBadRequest)
 		return
 	}
-	prefix := strings.TrimPrefix(req.URL.Path, "/")
+	prefix := chi.URLParam(req, "id")
 	url, ok := s.storage.GetURL(prefix)
 	if !ok {
 		http.Error(res, "", http.StatusBadRequest)
