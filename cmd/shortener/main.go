@@ -1,20 +1,10 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/base64"
-
-	"github.com/vook88/go-url-shortener/cmd/config"
+	"github.com/vook88/go-url-shortener/internal/config"
+	"github.com/vook88/go-url-shortener/internal/server"
+	"github.com/vook88/go-url-shortener/internal/storage"
 )
-
-func generateID() (string, error) {
-	b := make([]byte, 6) // генерирует 8 символов после base64 кодирования
-	_, err := rand.Read(b)
-	if err != nil {
-		return "", err
-	}
-	return base64.URLEncoding.EncodeToString(b), nil
-}
 
 func main() {
 	cfg := config.NewConfig()
@@ -24,7 +14,8 @@ func main() {
 }
 
 func run(cfg *config.Config) error {
-	storage := NewMemoryURLStorage()
-	err := Init(cfg, storage)
-	return err
+	newStorage := storage.New()
+
+	s, _ := server.New(cfg.ServerAddress, cfg.BaseURL, newStorage)
+	return s.Run()
 }
