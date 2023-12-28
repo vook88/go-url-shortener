@@ -71,8 +71,8 @@ func TestGetShortURL(t *testing.T) {
 	}
 	_, router := setupServer()
 
-	testUrl := "https://longurl.com"
-	body := bytes.NewBufferString(testUrl)
+	testURL := "https://longurl.com"
+	body := bytes.NewBufferString(testURL)
 	request, _ := http.NewRequest(http.MethodPost, "/", body)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
@@ -91,7 +91,7 @@ func TestGetShortURL(t *testing.T) {
 			assert.Equal(t, tc.expectedCode, response1.Code, "Код ответа не совпадает с ожидаемым")
 
 			if tc.method == http.MethodGet {
-				assert.Equal(t, response1.Header().Get("Location"), testUrl)
+				assert.Equal(t, response1.Header().Get("Location"), testURL)
 			}
 
 		})
