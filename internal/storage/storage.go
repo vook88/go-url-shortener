@@ -1,4 +1,4 @@
-package main
+package storage
 
 import "errors"
 
@@ -7,11 +7,13 @@ type URLStorage interface {
 	GetURL(id string) (string, bool)
 }
 
+var _ URLStorage = (*MemoryURLStorage)(nil)
+
 type MemoryURLStorage struct {
 	urls map[string]string
 }
 
-func NewMemoryURLStorage() *MemoryURLStorage {
+func New() *MemoryURLStorage {
 	return &MemoryURLStorage{urls: make(map[string]string)}
 }
 
