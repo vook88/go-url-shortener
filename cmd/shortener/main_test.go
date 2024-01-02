@@ -18,11 +18,6 @@ func setupHandler() *server.Handler {
 	return server.NewHandler("https://example.com", mockStorage)
 }
 
-func trimDomainAndSlash(rawURL string) string {
-	u, _ := url.Parse(rawURL)
-	return u.Path[1:]
-}
-
 func TestGenerateShortUrl(t *testing.T) {
 	testCases := []struct {
 		method       string
@@ -38,8 +33,33 @@ func TestGenerateShortUrl(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.method, func(t *testing.T) {
 
-			body := bytes.NewBufferString(`{"url": "https://longurl.com"}`)
+			body := bytes.NewBufferString("https://longurl.com")
 			request, _ := http.NewRequest(tc.method, "/", body)
+			response := httptest.NewRecorder()
+
+			h.ServeHTTP(response, request)
+			assert.Equal(t, tc.expectedCode, response.Code, "Код ответа не совпадает с ожидаемым")
+		})
+	}
+}
+
+func TestShortenURL(t *testing.T) {
+	testCases := []struct {
+		method       string
+		expectedCode int
+	}{
+		{method: http.MethodGet, expectedCode: http.StatusBadRequest},
+		{method: http.MethodPut, expectedCode: http.StatusBadRequest},
+		{method: http.MethodDelete, expectedCode: http.StatusBadRequest},
+		{method: http.MethodPost, expectedCode: http.StatusCreated},
+	}
+
+	h := setupHandler()
+	for _, tc := range testCases {
+		t.Run(tc.method, func(t *testing.T) {
+
+			body := bytes.NewBufferString(`{"url": "https://longurl.com"}`)
+			request, _ := http.NewRequest(tc.method, "/api/shorten", body)
 			response := httptest.NewRecorder()
 
 			h.ServeHTTP(response, request)
