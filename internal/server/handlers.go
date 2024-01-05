@@ -25,7 +25,10 @@ func NewHandler(baseURL string, storage storage.URLStorage) *Handler {
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 	})
+
 	r.Use(logger.LoggerMiddleware)
+	r.Use(gzipMiddleware)
+
 	h := Handler{
 		baseURL: baseURL,
 		storage: storage,
