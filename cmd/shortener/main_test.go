@@ -14,7 +14,7 @@ import (
 )
 
 func setupHandler() *server.Handler {
-	mockStorage := storage2.New()
+	mockStorage, _ := storage2.New("")
 	return server.NewHandler("https://example.com", mockStorage)
 }
 

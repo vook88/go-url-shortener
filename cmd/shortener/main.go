@@ -14,7 +14,10 @@ func main() {
 }
 
 func run(cfg *config.Config) error {
-	newStorage := storage.New()
+	newStorage, err := storage.New(cfg.FileStoragePath)
+	if err != nil {
+		return err
+	}
 	h := server.NewHandler(cfg.BaseURL, newStorage)
 	s := server.New(cfg.ServerAddress, h)
 	return s.Run()
