@@ -25,101 +25,43 @@ type MemoryURLStorage struct {
 	urls map[string]string
 }
 
-type Producer struct {
-	file    *os.File
-	encoder *json.Encoder
-}
-
-func (p *Producer) WriteEvent(event *Event) error {
-	return p.encoder.Encode(event)
-}
-
-func (p *Producer) Close() error {
-	return p.file.Close()
-}
-
-func NewProducer(filename string) (*Producer, error) {
-	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Producer{
-		file:    file,
-		encoder: json.NewEncoder(file),
-	}, nil
-}
-
-type Consumer struct {
-	file    *os.File
-	decoder *json.Decoder
-}
-
-func NewConsumer(filename string) (*Consumer, error) {
-	file, err := os.OpenFile(filename, os.O_RDONLY, 0666)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Consumer{
-		file:    file,
-		decoder: json.NewDecoder(file),
-	}, nil
-}
-
-func (c *Consumer) ReadEvent() (*Event, error) {
-	event := &Event{}
-	err := c.decoder.Decode(event)
-	if err != nil {
-		return nil, err
-	}
-
-	return event, nil
-}
-
-func (c *Consumer) Close() error {
-	return c.file.Close()
-}
-
 type FileURLStorage struct {
 	*MemoryURLStorage
-	producer *Producer
+	filepath string
 }
 
 func New(filepath string) (URLStorage, error) {
 	urls := make(map[string]string)
 
-	if filepath != "" {
-		producer, err := NewProducer(filepath)
-		if err != nil {
-			return nil, err
-		}
+	if filepath == "" {
+		return &MemoryURLStorage{urls: urls}, nil
+	}
 
-		consumer, err := NewConsumer(filepath)
-		if err != nil {
-			return nil, err
-		}
-		defer consumer.Close()
+	file, err := os.OpenFile(filepath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		return nil, err
+	}
 
-		for {
-			event, err := consumer.ReadEvent()
-			if err != nil {
-				if err.Error() == "EOF" {
-					break
-				}
+	defer file.Close()
 
-				return nil, err
+	for {
+		event := &Event{}
+		err2 := json.NewDecoder(file).Decode(event)
+		if err2 != nil {
+			if err2.Error() == "EOF" {
+				break
 			}
 
-			urls[event.ShortURL] = event.OriginalURL
+			return nil, err2
 		}
 
-		return &FileURLStorage{
-			producer:         producer,
-			MemoryURLStorage: &MemoryURLStorage{urls: urls},
-		}, nil
+		urls[event.ShortURL] = event.OriginalURL
 	}
-	return &MemoryURLStorage{urls: urls}, nil
+
+	return &FileURLStorage{
+		filepath:         filepath,
+		MemoryURLStorage: &MemoryURLStorage{urls: urls},
+	}, nil
 }
 
 func (f *FileURLStorage) AddURL(id string, url string) error {
@@ -139,9 +81,16 @@ func (f *FileURLStorage) AddURL(id string, url string) error {
 		OriginalURL: url,
 	}
 
-	if err := f.producer.WriteEvent(&event); err != nil {
-		f.MemoryURLStorage.DeleteURL(id)
+	file, err := os.OpenFile(f.filepath, os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
 		return err
+	}
+
+	defer file.Close()
+
+	if err2 := json.NewEncoder(file).Encode(&event); err2 != nil {
+		f.MemoryURLStorage.DeleteURL(id)
+		return err2
 	}
 
 	return nil
