@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,15 +9,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/vook88/go-url-shortener/internal/config"
 	"github.com/vook88/go-url-shortener/internal/server"
 	storage2 "github.com/vook88/go-url-shortener/internal/storage"
 )
 
 func setupHandler() *server.Handler {
-	ctx := context.Background()
-	c := config.Config{}
-	mockStorage, _ := storage2.New(ctx, &c)
+	mockStorage, _ := storage2.New("")
 	return server.NewHandler("https://example.com", mockStorage, "")
 }
 
