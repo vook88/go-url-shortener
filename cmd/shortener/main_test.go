@@ -15,7 +15,7 @@ import (
 
 func setupHandler() *server.Handler {
 	mockStorage, _ := storage2.New("")
-	return server.NewHandler("https://example.com", mockStorage)
+	return server.NewHandler("https://example.com", mockStorage, "")
 }
 
 func TestGenerateShortUrl(t *testing.T) {

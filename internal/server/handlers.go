@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/vook88/go-url-shortener/internal/database"
 	"github.com/vook88/go-url-shortener/internal/logger"
 	"github.com/vook88/go-url-shortener/internal/models"
 	"github.com/vook88/go-url-shortener/internal/service"
@@ -20,7 +22,7 @@ type Handler struct {
 	mux     *chi.Mux
 }
 
-func NewHandler(baseURL string, storage storage.URLStorage) *Handler {
+func NewHandler(baseURL string, storage storage.URLStorage, databaseDSN string) *Handler {
 	r := chi.NewRouter()
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
@@ -38,6 +40,9 @@ func NewHandler(baseURL string, storage storage.URLStorage) *Handler {
 	r.Post("/", h.generateShortURL)
 	r.Post("/api/shorten", h.shortenURL)
 	r.Get("/{id}", h.getShortURL)
+	r.Get("/ping", func(writer http.ResponseWriter, request *http.Request) {
+		h.pingDB(writer, request, databaseDSN)
+	})
 
 	return &h
 }
@@ -120,4 +125,37 @@ func (h *Handler) shortenURL(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 	log.Debug().Msg("sending HTTP 200 response")
+}
+
+func (h *Handler) pingDB(res http.ResponseWriter, req *http.Request, databaseDSN string) {
+	if req.Method != http.MethodGet {
+		http.Error(res, "Only GET requests are allowed!", http.StatusBadRequest)
+		return
+	}
+	defer req.Body.Close()
+
+	log := logger.GetLogger()
+	log.Debug().Msg("ping DB")
+
+	if databaseDSN == "" {
+		log.Debug().Msg("databaseDSN is empty")
+		res.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	db, err := database.New(databaseDSN)
+	if err != nil {
+		log.Debug().Msg("cannot connect to database")
+		res.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer db.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err = db.PingContext(ctx); err != nil {
+		log.Debug().Msg("cannot ping to database")
+		res.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	res.WriteHeader(http.StatusOK)
 }
