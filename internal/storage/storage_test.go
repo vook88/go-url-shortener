@@ -31,7 +31,7 @@ func TestMemoryURLStorage(t *testing.T) {
 
 func TestFileURLStorage(t *testing.T) {
 	// Создаем временный файл для тестирования
-	tmpfile := "test_urls.json"
+	tmpfile := "test_urls.txt"
 	defer os.Remove(tmpfile)
 
 	// Создаем инстанс FileURLStorage для тестирования

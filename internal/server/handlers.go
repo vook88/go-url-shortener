@@ -8,9 +8,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/vook88/go-url-shortener/internal/id"
 	"github.com/vook88/go-url-shortener/internal/logger"
 	"github.com/vook88/go-url-shortener/internal/models"
+	"github.com/vook88/go-url-shortener/internal/service"
 	"github.com/vook88/go-url-shortener/internal/storage"
 )
 
@@ -36,8 +36,8 @@ func NewHandler(baseURL string, storage storage.URLStorage) *Handler {
 	}
 
 	r.Post("/", h.generateShortURL)
-	r.Get("/{id}", h.getShortURL)
 	r.Post("/api/shorten", h.shortenURL)
+	r.Get("/{id}", h.getShortURL)
 
 	return &h
 }
@@ -59,20 +59,14 @@ func (h *Handler) generateShortURL(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	shortID, err := id.New()
-	if err != nil {
-		http.Error(res, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	err = h.storage.AddURL(shortID, string(url))
+	shortURL, err := service.GenerateShortURL(string(url), h.storage, h.baseURL)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	res.WriteHeader(http.StatusCreated)
-	_, _ = fmt.Fprintf(res, "%s/%s", h.baseURL, shortID)
+	_, _ = fmt.Fprintf(res, "%s", shortURL)
 }
 
 func (h *Handler) getShortURL(res http.ResponseWriter, req *http.Request) {
@@ -106,20 +100,14 @@ func (h *Handler) shortenURL(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	shortID, err := id.New()
-	if err != nil {
-		http.Error(res, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	err = h.storage.AddURL(shortID, string(r.URL))
+	shortURL, err := service.GenerateShortURL(r.URL, h.storage, h.baseURL)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	resp := models.ResponseShortURL{
-		ShortURL: h.baseURL + "/" + shortID,
+		ShortURL: shortURL,
 	}
 
 	res.Header().Set("Content-Type", "application/json")
@@ -132,5 +120,4 @@ func (h *Handler) shortenURL(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 	log.Debug().Msg("sending HTTP 200 response")
-
 }
