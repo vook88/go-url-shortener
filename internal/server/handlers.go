@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -64,7 +63,7 @@ func (h *Handler) generateShortURL(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	shortURL, err := service.GenerateShortURL(string(url), h.storage, h.baseURL)
+	shortURL, err := service.GenerateShortURL(req.Context(), string(url), h.storage, h.baseURL)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
@@ -80,7 +79,7 @@ func (h *Handler) getShortURL(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 	prefix := chi.URLParam(req, "id")
-	url, ok := h.storage.GetURL(prefix)
+	url, ok := h.storage.GetURL(req.Context(), prefix)
 	if !ok {
 		http.Error(res, "", http.StatusBadRequest)
 		return
@@ -105,7 +104,7 @@ func (h *Handler) shortenURL(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	shortURL, err := service.GenerateShortURL(r.URL, h.storage, h.baseURL)
+	shortURL, err := service.GenerateShortURL(req.Context(), r.URL, h.storage, h.baseURL)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
@@ -150,9 +149,7 @@ func (h *Handler) pingDB(res http.ResponseWriter, req *http.Request, databaseDSN
 	}
 	defer db.Close()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	if err = db.PingContext(ctx); err != nil {
+	if err = db.PingContext(req.Context()); err != nil {
 		log.Debug().Msg("cannot ping to database")
 		res.WriteHeader(http.StatusInternalServerError)
 		return

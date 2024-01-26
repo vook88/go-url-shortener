@@ -1,11 +1,16 @@
 package storage
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"os"
 
 	"github.com/google/uuid"
+
+	"github.com/vook88/go-url-shortener/internal/config"
+	"github.com/vook88/go-url-shortener/internal/database"
 )
 
 type Event struct {
@@ -15,8 +20,8 @@ type Event struct {
 }
 
 type URLStorage interface {
-	AddURL(id string, url string) error
-	GetURL(id string) (string, bool)
+	AddURL(ctx context.Context, id string, url string) error
+	GetURL(ctx context.Context, id string) (string, bool)
 }
 
 var _ URLStorage = (*MemoryURLStorage)(nil)
@@ -30,14 +35,26 @@ type FileURLStorage struct {
 	filepath string
 }
 
-func New(filepath string) (URLStorage, error) {
+type DBURLStorage struct {
+	db *sql.DB
+}
+
+func New(ctx context.Context, config *config.Config) (URLStorage, error) {
+	if config.DatabaseDSN != "" {
+		db, _ := database.New(config.DatabaseDSN)
+		err := database.Ping(ctx, db)
+		err2 := database.RunMigrations(db)
+		if err == nil && err2 == nil {
+			return &DBURLStorage{db: db}, nil
+		}
+	}
 	urls := make(map[string]string)
 
-	if filepath == "" {
+	if config.FileStoragePath == "" {
 		return &MemoryURLStorage{urls: urls}, nil
 	}
 
-	file, err := os.OpenFile(filepath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	file, err := os.OpenFile(config.FileStoragePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		return nil, err
 	}
@@ -59,13 +76,13 @@ func New(filepath string) (URLStorage, error) {
 	}
 
 	return &FileURLStorage{
-		filepath:         filepath,
+		filepath:         config.FileStoragePath,
 		MemoryURLStorage: &MemoryURLStorage{urls: urls},
 	}, nil
 }
 
-func (f *FileURLStorage) AddURL(id string, url string) error {
-	err := f.MemoryURLStorage.AddURL(id, url)
+func (f *FileURLStorage) AddURL(ctx context.Context, id string, url string) error {
+	err := f.MemoryURLStorage.AddURL(ctx, id, url)
 	if err != nil {
 		return err
 	}
@@ -89,14 +106,14 @@ func (f *FileURLStorage) AddURL(id string, url string) error {
 	defer file.Close()
 
 	if err2 := json.NewEncoder(file).Encode(&event); err2 != nil {
-		f.MemoryURLStorage.DeleteURL(id)
+		f.MemoryURLStorage.DeleteURL(ctx, id)
 		return err2
 	}
 
 	return nil
 }
 
-func (s *MemoryURLStorage) AddURL(id string, url string) error {
+func (s *MemoryURLStorage) AddURL(_ context.Context, id string, url string) error {
 	if id == "" {
 		return errors.New("short URL can't be empty")
 	}
@@ -104,11 +121,27 @@ func (s *MemoryURLStorage) AddURL(id string, url string) error {
 	return nil
 }
 
-func (s *MemoryURLStorage) GetURL(id string) (string, bool) {
+func (s *MemoryURLStorage) GetURL(_ context.Context, id string) (string, bool) {
 	url, ok := s.urls[id]
 	return url, ok
 }
 
-func (s *MemoryURLStorage) DeleteURL(id string) {
+func (s *MemoryURLStorage) DeleteURL(_ context.Context, id string) {
 	delete(s.urls, id)
+}
+
+func (s *DBURLStorage) AddURL(ctx context.Context, id string, url string) error {
+	err := database.AddURL(ctx, s.db, id, url)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *DBURLStorage) GetURL(ctx context.Context, id string) (string, bool) {
+	url, b, err := database.GetURL(ctx, s.db, id)
+	if err != nil {
+		return "", false
+	}
+	return url, b
 }
