@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"os"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/vook88/go-url-shortener/internal/config"
 	"github.com/vook88/go-url-shortener/internal/database"
-	errors2 "github.com/vook88/go-url-shortener/internal/errors"
 )
 
 type Event struct {
@@ -21,9 +21,7 @@ type Event struct {
 
 type URLStorage interface {
 	AddURL(ctx context.Context, id string, url string) error
-	BatchAddURL(ctx context.Context, insertURLs []database.InsertURL) error
 	GetURL(ctx context.Context, id string) (string, bool)
-	Ping(ctx context.Context) error
 }
 
 var _ URLStorage = (*MemoryURLStorage)(nil)
@@ -38,14 +36,14 @@ type FileURLStorage struct {
 }
 
 type DBURLStorage struct {
-	db *database.DB
+	db *sql.DB
 }
 
 func New(ctx context.Context, config *config.Config) (URLStorage, error) {
 	if config.DatabaseDSN != "" {
 		db, _ := database.New(config.DatabaseDSN)
-		err := db.Ping(ctx)
-		err2 := db.RunMigrations()
+		err := database.Ping(ctx, db)
+		err2 := database.RunMigrations(db)
 		if err == nil && err2 == nil {
 			return &DBURLStorage{db: db}, nil
 		}
@@ -114,30 +112,12 @@ func (f *FileURLStorage) AddURL(ctx context.Context, id string, url string) erro
 
 	return nil
 }
-func (s *MemoryURLStorage) HasValue(value string) (bool, string) {
-	for k, v := range s.urls {
-		if v == value {
-			return true, k
-		}
-	}
-	return false, ""
-}
+
 func (s *MemoryURLStorage) AddURL(_ context.Context, id string, url string) error {
 	if id == "" {
 		return errors.New("short URL can't be empty")
 	}
-	yes, key := s.HasValue(url)
-	if yes {
-		return errors2.NewDuplicateURLError(key)
-	}
 	s.urls[id] = url
-	return nil
-}
-
-func (s *MemoryURLStorage) BatchAddURL(_ context.Context, urls []database.InsertURL) error {
-	for _, url := range urls {
-		s.urls[url.ShortURL] = url.OriginalURL
-	}
 	return nil
 }
 
@@ -146,24 +126,12 @@ func (s *MemoryURLStorage) GetURL(_ context.Context, id string) (string, bool) {
 	return url, ok
 }
 
-func (s *MemoryURLStorage) Ping(_ context.Context) error {
-	return errors.New("MemoryURLStorage doesn't support ping")
-}
-
 func (s *MemoryURLStorage) DeleteURL(_ context.Context, id string) {
 	delete(s.urls, id)
 }
 
 func (s *DBURLStorage) AddURL(ctx context.Context, id string, url string) error {
-	err := s.db.AddURL(ctx, id, url)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (s *DBURLStorage) BatchAddURL(ctx context.Context, urls []database.InsertURL) error {
-	err := s.db.BatchAddURL(ctx, urls)
+	err := database.AddURL(ctx, s.db, id, url)
 	if err != nil {
 		return err
 	}
@@ -171,13 +139,9 @@ func (s *DBURLStorage) BatchAddURL(ctx context.Context, urls []database.InsertUR
 }
 
 func (s *DBURLStorage) GetURL(ctx context.Context, id string) (string, bool) {
-	url, b, err := s.db.GetURL(ctx, id)
+	url, b, err := database.GetURL(ctx, s.db, id)
 	if err != nil {
 		return "", false
 	}
 	return url, b
-}
-
-func (s *DBURLStorage) Ping(ctx context.Context) error {
-	return s.db.Ping(ctx)
 }
