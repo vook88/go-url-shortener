@@ -39,6 +39,7 @@ func NewHandler(baseURL string, storage storage.URLStorage, databaseDSN string) 
 	r.Post("/api/shorten", h.shortenURL)
 	r.Get("/{id}", h.getShortURL)
 	r.Get("/ping", h.pingDB)
+	r.Post("/api/shorten/batch", h.batchShortenURLs)
 
 	return &h
 }
@@ -60,7 +61,9 @@ func (h *Handler) generateShortURL(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	shortURL, err := service.GenerateShortURL(req.Context(), string(url), h.storage, h.baseURL)
+	shortener := service.NewShortener(h.storage, h.baseURL)
+
+	shortURL, err := shortener.GenerateShortURL(req.Context(), string(url))
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
@@ -101,7 +104,8 @@ func (h *Handler) shortenURL(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	shortURL, err := service.GenerateShortURL(req.Context(), r.URL, h.storage, h.baseURL)
+	shortener := service.NewShortener(h.storage, h.baseURL)
+	shortURL, err := shortener.GenerateShortURL(req.Context(), r.URL)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
@@ -117,6 +121,42 @@ func (h *Handler) shortenURL(res http.ResponseWriter, req *http.Request) {
 	// сериализуем ответ сервера
 	enc := json.NewEncoder(res)
 	if err = enc.Encode(resp); err != nil {
+		log.Debug().Msg(`error encoding response" + log.Err(err)`)
+		return
+	}
+	log.Debug().Msg("sending HTTP 200 response")
+}
+
+func (h *Handler) batchShortenURLs(res http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		http.Error(res, "Only GET requests are allowed!", http.StatusBadRequest)
+		return
+	}
+	defer req.Body.Close()
+
+	log := logger.GetLogger()
+	log.Debug().Msg("decoding request")
+
+	var request models.RequestBatchLongURLs
+	err := json.NewDecoder(req.Body).Decode(&request)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	s := service.NewShortener(h.storage, h.baseURL)
+	shortURLs, err := s.BatchGenerateShortURL(req.Context(), request)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	res.Header().Set("Content-Type", "application/json")
+	res.WriteHeader(http.StatusCreated)
+
+	// сериализуем ответ сервера
+	enc := json.NewEncoder(res)
+	if err = enc.Encode(shortURLs); err != nil {
 		log.Debug().Msg(`error encoding response" + log.Err(err)`)
 		return
 	}

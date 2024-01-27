@@ -121,6 +121,13 @@ func (s *MemoryURLStorage) AddURL(_ context.Context, id string, url string) erro
 	return nil
 }
 
+func (s *MemoryURLStorage) BatchAddURL(_ context.Context, urls []Event) error {
+	for _, event := range urls {
+		s.urls[event.ShortURL] = event.OriginalURL
+	}
+	return nil
+}
+
 func (s *MemoryURLStorage) GetURL(_ context.Context, id string) (string, bool) {
 	url, ok := s.urls[id]
 	return url, ok
