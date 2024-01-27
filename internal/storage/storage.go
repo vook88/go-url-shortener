@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"os"
@@ -22,6 +21,7 @@ type Event struct {
 type URLStorage interface {
 	AddURL(ctx context.Context, id string, url string) error
 	GetURL(ctx context.Context, id string) (string, bool)
+	Ping(ctx context.Context) error
 }
 
 var _ URLStorage = (*MemoryURLStorage)(nil)
@@ -36,14 +36,14 @@ type FileURLStorage struct {
 }
 
 type DBURLStorage struct {
-	db *sql.DB
+	db *database.DB
 }
 
 func New(ctx context.Context, config *config.Config) (URLStorage, error) {
 	if config.DatabaseDSN != "" {
 		db, _ := database.New(config.DatabaseDSN)
-		err := database.Ping(ctx, db)
-		err2 := database.RunMigrations(db)
+		err := db.Ping(ctx)
+		err2 := db.RunMigrations()
 		if err == nil && err2 == nil {
 			return &DBURLStorage{db: db}, nil
 		}
@@ -126,12 +126,16 @@ func (s *MemoryURLStorage) GetURL(_ context.Context, id string) (string, bool) {
 	return url, ok
 }
 
+func (s *MemoryURLStorage) Ping(_ context.Context) error {
+	return errors.New("MemoryURLStorage doesn't support ping")
+}
+
 func (s *MemoryURLStorage) DeleteURL(_ context.Context, id string) {
 	delete(s.urls, id)
 }
 
 func (s *DBURLStorage) AddURL(ctx context.Context, id string, url string) error {
-	err := database.AddURL(ctx, s.db, id, url)
+	err := s.db.AddURL(ctx, id, url)
 	if err != nil {
 		return err
 	}
@@ -139,9 +143,13 @@ func (s *DBURLStorage) AddURL(ctx context.Context, id string, url string) error 
 }
 
 func (s *DBURLStorage) GetURL(ctx context.Context, id string) (string, bool) {
-	url, b, err := database.GetURL(ctx, s.db, id)
+	url, b, err := s.db.GetURL(ctx, id)
 	if err != nil {
 		return "", false
 	}
 	return url, b
+}
+
+func (s *DBURLStorage) Ping(ctx context.Context) error {
+	return s.db.Ping(ctx)
 }

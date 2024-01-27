@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/vook88/go-url-shortener/internal/database"
 	"github.com/vook88/go-url-shortener/internal/logger"
 	"github.com/vook88/go-url-shortener/internal/models"
 	"github.com/vook88/go-url-shortener/internal/service"
@@ -39,9 +38,7 @@ func NewHandler(baseURL string, storage storage.URLStorage, databaseDSN string) 
 	r.Post("/", h.generateShortURL)
 	r.Post("/api/shorten", h.shortenURL)
 	r.Get("/{id}", h.getShortURL)
-	r.Get("/ping", func(writer http.ResponseWriter, request *http.Request) {
-		h.pingDB(writer, request, databaseDSN)
-	})
+	r.Get("/ping", h.pingDB)
 
 	return &h
 }
@@ -126,7 +123,7 @@ func (h *Handler) shortenURL(res http.ResponseWriter, req *http.Request) {
 	log.Debug().Msg("sending HTTP 200 response")
 }
 
-func (h *Handler) pingDB(res http.ResponseWriter, req *http.Request, databaseDSN string) {
+func (h *Handler) pingDB(res http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
 		http.Error(res, "Only GET requests are allowed!", http.StatusBadRequest)
 		return
@@ -136,20 +133,7 @@ func (h *Handler) pingDB(res http.ResponseWriter, req *http.Request, databaseDSN
 	log := logger.GetLogger()
 	log.Debug().Msg("ping DB")
 
-	if databaseDSN == "" {
-		log.Debug().Msg("databaseDSN is empty")
-		res.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	db, err := database.New(databaseDSN)
-	if err != nil {
-		log.Debug().Msg("cannot connect to database")
-		res.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	defer db.Close()
-
-	if err = db.PingContext(req.Context()); err != nil {
+	if err := h.storage.Ping(req.Context()); err != nil {
 		log.Debug().Msg("cannot ping to database")
 		res.WriteHeader(http.StatusInternalServerError)
 		return
