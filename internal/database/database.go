@@ -11,23 +11,27 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-func New(databaseDNS string) (*sql.DB, error) {
+type DB struct {
+	db *sql.DB
+}
+
+func New(databaseDNS string) (*DB, error) {
 	db, err := sql.Open("pgx", databaseDNS)
 	if err != nil {
 		return nil, err
 	}
-	return db, nil
+	return &DB{db: db}, nil
 }
 
-func Ping(ctx context.Context, db *sql.DB) error {
-	if err := db.PingContext(ctx); err != nil {
+func (d *DB) Ping(ctx context.Context) error {
+	if err := d.db.PingContext(ctx); err != nil {
 		return err
 	}
 	return nil
 }
 
-func RunMigrations(db *sql.DB) error {
-	driver, err := postgres.WithInstance(db, &postgres.Config{})
+func (d *DB) RunMigrations() error {
+	driver, err := postgres.WithInstance(d.db, &postgres.Config{})
 	if err != nil {
 		return err
 	}
@@ -48,14 +52,14 @@ func RunMigrations(db *sql.DB) error {
 	return err
 }
 
-func AddURL(ctx context.Context, db *sql.DB, id string, url string) error {
-	_, err := db.ExecContext(ctx, "INSERT INTO url_mappings (short_url, long_url) VALUES ($1, $2)", id, url)
+func (d *DB) AddURL(ctx context.Context, id string, url string) error {
+	_, err := d.db.ExecContext(ctx, "INSERT INTO url_mappings (short_url, long_url) VALUES ($1, $2)", id, url)
 	return err
 }
 
-func GetURL(ctx context.Context, db *sql.DB, id string) (string, bool, error) {
+func (d *DB) GetURL(ctx context.Context, id string) (string, bool, error) {
 	var url string
-	err := db.QueryRowContext(ctx, "SELECT long_url FROM url_mappings WHERE short_url = $1", id).Scan(&url)
+	err := d.db.QueryRowContext(ctx, "SELECT long_url FROM url_mappings WHERE short_url = $1", id).Scan(&url)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", false, nil
