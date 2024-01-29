@@ -2,12 +2,14 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
+	errors2 "github.com/vook88/go-url-shortener/internal/errors"
 	"github.com/vook88/go-url-shortener/internal/logger"
 	"github.com/vook88/go-url-shortener/internal/models"
 	"github.com/vook88/go-url-shortener/internal/service"
@@ -65,6 +67,12 @@ func (h *Handler) generateShortURL(res http.ResponseWriter, req *http.Request) {
 
 	shortURL, err := shortener.GenerateShortURL(req.Context(), string(url))
 	if err != nil {
+		var dupErr *errors2.DuplicateURLError
+		if errors.As(err, &dupErr) {
+			res.WriteHeader(http.StatusConflict)
+			_, _ = fmt.Fprintf(res, "%s", h.baseURL+"/"+err.Error())
+			return
+		}
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -106,9 +114,16 @@ func (h *Handler) shortenURL(res http.ResponseWriter, req *http.Request) {
 
 	shortener := service.NewShortener(h.storage, h.baseURL)
 	shortURL, err := shortener.GenerateShortURL(req.Context(), r.URL)
+	responseStatus := http.StatusCreated
 	if err != nil {
-		http.Error(res, err.Error(), http.StatusBadRequest)
-		return
+		var dupErr *errors2.DuplicateURLError
+		if !errors.As(err, &dupErr) {
+			http.Error(res, err.Error(), http.StatusBadRequest)
+			return
+
+		}
+		shortURL = h.baseURL + "/" + err.Error()
+		responseStatus = http.StatusConflict
 	}
 
 	resp := models.ResponseShortURL{
@@ -116,7 +131,7 @@ func (h *Handler) shortenURL(res http.ResponseWriter, req *http.Request) {
 	}
 
 	res.Header().Set("Content-Type", "application/json")
-	res.WriteHeader(http.StatusCreated)
+	res.WriteHeader(responseStatus)
 
 	// сериализуем ответ сервера
 	enc := json.NewEncoder(res)
