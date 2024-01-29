@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 
+	"github.com/vook88/go-url-shortener/internal/database"
 	"github.com/vook88/go-url-shortener/internal/id"
 	"github.com/vook88/go-url-shortener/internal/models"
 	"github.com/vook88/go-url-shortener/internal/storage"
@@ -33,17 +34,25 @@ func (s Shortener) GenerateShortURL(ctx context.Context, URL string) (string, er
 
 func (s Shortener) BatchGenerateShortURL(ctx context.Context, URLs []models.BatchLongURL) ([]models.BatchShortURL, error) {
 	var urls []models.BatchShortURL
+	var insertURLs []database.InsertURL
 
 	for _, URL := range URLs {
-		shortURL, err := s.GenerateShortURL(ctx, URL.OriginalURL)
+		shortID, err := id.New()
 		if err != nil {
-
 			return nil, err
 		}
 		urls = append(urls, models.BatchShortURL{
 			CorrelationID: URL.CorrelationID,
-			ShortURL:      shortURL,
+			ShortURL:      s.baseURL + "/" + shortID,
 		})
+		insertURLs = append(insertURLs, database.InsertURL{
+			ShortURL:    shortID,
+			OriginalURL: URL.OriginalURL,
+		})
+	}
+	err := s.storage.BatchAddURL(ctx, insertURLs)
+	if err != nil {
+		return nil, err
 	}
 	return urls, nil
 }
