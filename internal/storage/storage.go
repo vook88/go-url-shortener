@@ -20,6 +20,7 @@ type Event struct {
 
 type URLStorage interface {
 	AddURL(ctx context.Context, id string, url string) error
+	BatchAddURL(ctx context.Context, insertURLs []database.InsertURL) error
 	GetURL(ctx context.Context, id string) (string, bool)
 	Ping(ctx context.Context) error
 }
@@ -121,9 +122,9 @@ func (s *MemoryURLStorage) AddURL(_ context.Context, id string, url string) erro
 	return nil
 }
 
-func (s *MemoryURLStorage) BatchAddURL(_ context.Context, urls []Event) error {
-	for _, event := range urls {
-		s.urls[event.ShortURL] = event.OriginalURL
+func (s *MemoryURLStorage) BatchAddURL(_ context.Context, urls []database.InsertURL) error {
+	for _, url := range urls {
+		s.urls[url.ShortURL] = url.OriginalURL
 	}
 	return nil
 }
@@ -143,6 +144,14 @@ func (s *MemoryURLStorage) DeleteURL(_ context.Context, id string) {
 
 func (s *DBURLStorage) AddURL(ctx context.Context, id string, url string) error {
 	err := s.db.AddURL(ctx, id, url)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *DBURLStorage) BatchAddURL(ctx context.Context, urls []database.InsertURL) error {
+	err := s.db.BatchAddURL(ctx, urls)
 	if err != nil {
 		return err
 	}
