@@ -10,6 +10,7 @@ import (
 
 	"github.com/vook88/go-url-shortener/internal/config"
 	"github.com/vook88/go-url-shortener/internal/database"
+	errors2 "github.com/vook88/go-url-shortener/internal/errors"
 )
 
 type Event struct {
@@ -113,10 +114,21 @@ func (f *FileURLStorage) AddURL(ctx context.Context, id string, url string) erro
 
 	return nil
 }
-
+func (s *MemoryURLStorage) HasValue(value string) (bool, string) {
+	for k, v := range s.urls {
+		if v == value {
+			return true, k
+		}
+	}
+	return false, ""
+}
 func (s *MemoryURLStorage) AddURL(_ context.Context, id string, url string) error {
 	if id == "" {
 		return errors.New("short URL can't be empty")
+	}
+	yes, key := s.HasValue(url)
+	if yes {
+		return errors2.NewDuplicateURLError(key)
 	}
 	s.urls[id] = url
 	return nil

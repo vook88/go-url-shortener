@@ -11,22 +11,12 @@ import (
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
+
+	errors2 "github.com/vook88/go-url-shortener/internal/errors"
 )
 
 type DB struct {
 	db *sql.DB
-}
-
-type DuplicateURLError struct {
-	s string
-}
-
-func NewDuplicateURLError(text string) error {
-	return &DuplicateURLError{text}
-}
-
-func (e *DuplicateURLError) Error() string {
-	return e.s
 }
 
 func New(databaseDNS string) (*DB, error) {
@@ -87,7 +77,7 @@ func (d *DB) AddURL(ctx context.Context, id string, url string) error {
 			if err2 != nil {
 				return err2
 			}
-			return NewDuplicateURLError(shortURL)
+			return errors2.NewDuplicateURLError(shortURL)
 		}
 	}
 	return err
