@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/vook88/go-url-shortener/internal/contextkeys"
 	errors2 "github.com/vook88/go-url-shortener/internal/errors"
 	"github.com/vook88/go-url-shortener/internal/logger"
 	"github.com/vook88/go-url-shortener/internal/models"
@@ -22,7 +24,7 @@ type Handler struct {
 	mux     *chi.Mux
 }
 
-func NewHandler(baseURL string, storage storage.URLStorage, databaseDSN string) *Handler {
+func NewHandler(_ context.Context, baseURL string, storage storage.URLStorage) *Handler {
 	r := chi.NewRouter()
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
@@ -37,11 +39,12 @@ func NewHandler(baseURL string, storage storage.URLStorage, databaseDSN string) 
 		mux:     r,
 	}
 
-	r.Post("/", h.generateShortURL)
-	r.Post("/api/shorten", h.shortenURL)
+	r.With(AuthMiddlewareCheckAndCreate(storage)).Post("/", h.generateShortURL)
+	r.With(AuthMiddlewareCheckAndCreate(storage)).Post("/api/shorten", h.shortenURL)
 	r.Get("/{id}", h.getShortURL)
 	r.Get("/ping", h.pingDB)
-	r.Post("/api/shorten/batch", h.batchShortenURLs)
+	r.With(AuthMiddlewareCheckAndCreate(storage)).Post("/api/shorten/batch", h.batchShortenURLs)
+	r.With(AuthMiddlewareCheckOnly).Get("/api/user/urls", h.getUserURLs)
 
 	return &h
 }
@@ -63,9 +66,15 @@ func (h *Handler) generateShortURL(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	userID, ok := req.Context().Value(contextkeys.UserIDKey).(int)
+	if !ok {
+		http.Error(res, "user id not found in context", http.StatusInternalServerError)
+		return
+	}
+
 	shortener := service.NewShortener(h.storage, h.baseURL)
 
-	shortURL, err := shortener.GenerateShortURL(req.Context(), string(url))
+	shortURL, err := shortener.GenerateShortURL(req.Context(), userID, string(url))
 	if err != nil {
 		var dupErr *errors2.DuplicateURLError
 		if errors.As(err, &dupErr) {
@@ -86,9 +95,18 @@ func (h *Handler) getShortURL(res http.ResponseWriter, req *http.Request) {
 		http.Error(res, "Only GET requests are allowed!", http.StatusBadRequest)
 		return
 	}
+	log := logger.GetLogger()
 	prefix := chi.URLParam(req, "id")
-	url, ok := h.storage.GetURL(req.Context(), prefix)
+	url, ok, err := h.storage.GetURL(req.Context(), prefix)
+	log.Debug().Msgf("URL: %s", url)
+
+	if err != nil {
+		log.Error().Msg(err.Error())
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if !ok {
+		log.Error().Msg("URL not found")
 		http.Error(res, "", http.StatusBadRequest)
 		return
 	}
@@ -113,7 +131,13 @@ func (h *Handler) shortenURL(res http.ResponseWriter, req *http.Request) {
 	}
 
 	shortener := service.NewShortener(h.storage, h.baseURL)
-	shortURL, err := shortener.GenerateShortURL(req.Context(), r.URL)
+
+	userID, ok := req.Context().Value(contextkeys.UserIDKey).(int)
+	if !ok {
+		http.Error(res, "user id not found in context", http.StatusInternalServerError)
+		return
+	}
+	shortURL, err := shortener.GenerateShortURL(req.Context(), userID, r.URL)
 	responseStatus := http.StatusCreated
 	if err != nil {
 		var dupErr *errors2.DuplicateURLError
@@ -136,7 +160,7 @@ func (h *Handler) shortenURL(res http.ResponseWriter, req *http.Request) {
 	// сериализуем ответ сервера
 	enc := json.NewEncoder(res)
 	if err = enc.Encode(resp); err != nil {
-		log.Debug().Msg(`error encoding response" + log.Err(err)`)
+		log.Debug().Msgf("error encoding response: %s", err.Error())
 		return
 	}
 	log.Debug().Msg("sending HTTP 200 response")
@@ -160,7 +184,13 @@ func (h *Handler) batchShortenURLs(res http.ResponseWriter, req *http.Request) {
 	}
 
 	s := service.NewShortener(h.storage, h.baseURL)
-	shortURLs, err := s.BatchGenerateShortURL(req.Context(), request)
+
+	userID, ok := req.Context().Value(contextkeys.UserIDKey).(int)
+	if !ok {
+		http.Error(res, "user id not found in context", http.StatusInternalServerError)
+		return
+	}
+	shortURLs, err := s.BatchGenerateShortURL(req.Context(), userID, request)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
@@ -172,10 +202,52 @@ func (h *Handler) batchShortenURLs(res http.ResponseWriter, req *http.Request) {
 	// сериализуем ответ сервера
 	enc := json.NewEncoder(res)
 	if err = enc.Encode(shortURLs); err != nil {
-		log.Debug().Msg(`error encoding response" + log.Err(err)`)
+		log.Debug().Msgf("error encoding response: %s", err.Error())
 		return
 	}
 	log.Debug().Msg("sending HTTP 200 response")
+}
+
+func (h *Handler) getUserURLs(res http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		http.Error(res, "Only GET requests are allowed!", http.StatusBadRequest)
+		return
+	}
+
+	log := logger.GetLogger()
+	log.Debug().Msg("getting user URLs")
+
+	userID, ok := req.Context().Value(contextkeys.UserIDKey).(int)
+	if !ok {
+		http.Error(res, "user id not found in context", http.StatusInternalServerError)
+		return
+	}
+
+	urls, err := h.storage.GetUserURLs(req.Context(), userID)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	for i := range urls {
+		urls[i].ShortURL = h.baseURL + "/" + urls[i].ShortURL
+	}
+
+	res.Header().Set("Content-Type", "application/json")
+	if len(urls) > 0 {
+		res.WriteHeader(http.StatusOK)
+	} else {
+		res.WriteHeader(http.StatusNoContent)
+	}
+
+	// сериализуем ответ сервера
+	enc := json.NewEncoder(res)
+	if err = enc.Encode(urls); err != nil {
+		log.Debug().Msgf("error encoding response: %s", err.Error())
+		return
+	}
+	log.Debug().Msg("sending HTTP 200 response")
+
 }
 
 func (h *Handler) pingDB(res http.ResponseWriter, req *http.Request) {

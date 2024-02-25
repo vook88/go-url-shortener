@@ -18,13 +18,13 @@ func NewShortener(storage storage.URLStorage, baseURL string) *Shortener {
 	return &Shortener{storage: storage, baseURL: baseURL}
 }
 
-func (s Shortener) GenerateShortURL(ctx context.Context, URL string) (string, error) {
+func (s Shortener) GenerateShortURL(ctx context.Context, userID int, URL string) (string, error) {
 	shortID, err := id.New()
 	if err != nil {
 		return "", err
 	}
 
-	err = s.storage.AddURL(ctx, shortID, URL)
+	err = s.storage.AddURL(ctx, userID, shortID, URL)
 	if err != nil {
 		return "", err
 	}
@@ -32,7 +32,7 @@ func (s Shortener) GenerateShortURL(ctx context.Context, URL string) (string, er
 	return s.baseURL + "/" + shortID, nil
 }
 
-func (s Shortener) BatchGenerateShortURL(ctx context.Context, URLs []models.BatchLongURL) ([]models.BatchShortURL, error) {
+func (s Shortener) BatchGenerateShortURL(ctx context.Context, userID int, URLs []models.BatchLongURL) ([]models.BatchShortURL, error) {
 	var urls []models.BatchShortURL
 	var insertURLs []database.InsertURL
 
@@ -50,7 +50,7 @@ func (s Shortener) BatchGenerateShortURL(ctx context.Context, URLs []models.Batc
 			OriginalURL: URL.OriginalURL,
 		})
 	}
-	err := s.storage.BatchAddURL(ctx, insertURLs)
+	err := s.storage.BatchAddURL(ctx, userID, insertURLs)
 	if err != nil {
 		return nil, err
 	}
