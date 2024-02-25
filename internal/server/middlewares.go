@@ -74,10 +74,7 @@ func AuthMiddlewareCreator(storage storage.URLStorage) func(http.Handler) http.H
 					return
 				}
 				log.Error().Msg(err.Error())
-				if !errors.Is(err, authn.ErrTokenIsNotValid) {
-					http.Error(w, err.Error(), http.StatusUnauthorized)
-					return
-				}
+				http.Error(w, err.Error(), http.StatusUnauthorized)
 			}
 			userID, err = storage.GenerateUserID(r.Context())
 			if err != nil {
