@@ -21,7 +21,7 @@ func run(cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
-	h := server.NewHandler(cfg.BaseURL, newStorage, cfg.DatabaseDSN)
+	h := server.NewHandler(ctx, cfg.BaseURL, newStorage)
 	s := server.New(cfg.ServerAddress, h)
 	return s.Run()
 }
