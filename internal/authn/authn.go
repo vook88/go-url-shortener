@@ -13,8 +13,8 @@ type Claims struct {
 	UserID int
 }
 
-var ErrUserIDNotFound = errors.New("UserID not found in token")
-var ErrTokenIsNotValid = errors.New("Token is not valid")
+var ErrUserIDNotFound = errors.New("userID not found in token")
+var ErrTokenIsNotValid = errors.New("token is not valid")
 
 const TokenExp = time.Hour * 24
 const SecretKey = "supersecretkey"
