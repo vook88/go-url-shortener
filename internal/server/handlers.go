@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,7 +23,7 @@ type Handler struct {
 	mux     *chi.Mux
 }
 
-func NewHandler(baseURL string, storage storage.URLStorage, databaseDSN string) *Handler {
+func NewHandler(ctx context.Context, baseURL string, storage storage.URLStorage) *Handler {
 	r := chi.NewRouter()
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
@@ -30,6 +31,7 @@ func NewHandler(baseURL string, storage storage.URLStorage, databaseDSN string) 
 
 	r.Use(logger.LoggerMiddleware)
 	r.Use(gzipMiddleware)
+	r.Use(AuthMiddlewareCreator(storage))
 
 	h := Handler{
 		baseURL: baseURL,
@@ -42,6 +44,7 @@ func NewHandler(baseURL string, storage storage.URLStorage, databaseDSN string) 
 	r.Get("/{id}", h.getShortURL)
 	r.Get("/ping", h.pingDB)
 	r.Post("/api/shorten/batch", h.batchShortenURLs)
+	r.Get("/api/user/urls", h.getUserURLs)
 
 	return &h
 }
@@ -86,9 +89,18 @@ func (h *Handler) getShortURL(res http.ResponseWriter, req *http.Request) {
 		http.Error(res, "Only GET requests are allowed!", http.StatusBadRequest)
 		return
 	}
+	log := logger.GetLogger()
 	prefix := chi.URLParam(req, "id")
-	url, ok := h.storage.GetURL(req.Context(), prefix)
+	url, ok, err := h.storage.GetURL(req.Context(), prefix)
+	log.Debug().Msgf("URL: %s", url)
+
+	if err != nil {
+		log.Error().Msg(err.Error())
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if !ok {
+		log.Error().Msg("URL not found")
 		http.Error(res, "", http.StatusBadRequest)
 		return
 	}
@@ -176,6 +188,43 @@ func (h *Handler) batchShortenURLs(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 	log.Debug().Msg("sending HTTP 200 response")
+}
+
+func (h *Handler) getUserURLs(res http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		http.Error(res, "Only GET requests are allowed!", http.StatusBadRequest)
+		return
+	}
+	defer req.Body.Close()
+
+	log := logger.GetLogger()
+	log.Debug().Msg("getting user URLs")
+
+	urls, err := h.storage.GetUserURLs(req.Context())
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	for i := range urls {
+		urls[i].ShortURL = h.baseURL + "/" + urls[i].ShortURL
+	}
+
+	res.Header().Set("Content-Type", "application/json")
+	if len(urls) > 0 {
+		res.WriteHeader(http.StatusOK)
+	} else {
+		res.WriteHeader(http.StatusNoContent)
+	}
+
+	// сериализуем ответ сервера
+	enc := json.NewEncoder(res)
+	if err = enc.Encode(urls); err != nil {
+		log.Debug().Msg(`error encoding response" + log.Err(err)`)
+		return
+	}
+	log.Debug().Msg("sending HTTP 200 response")
+
 }
 
 func (h *Handler) pingDB(res http.ResponseWriter, req *http.Request) {

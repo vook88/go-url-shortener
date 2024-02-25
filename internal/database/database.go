@@ -12,7 +12,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"github.com/vook88/go-url-shortener/internal/contextkeys"
 	errors2 "github.com/vook88/go-url-shortener/internal/errors"
+	"github.com/vook88/go-url-shortener/internal/models"
 )
 
 type DB struct {
@@ -69,7 +71,12 @@ func (d *DB) getShortURLByLongURL(ctx context.Context, id string) (string, bool,
 }
 
 func (d *DB) AddURL(ctx context.Context, id string, url string) error {
-	_, err := d.db.ExecContext(ctx, "INSERT INTO url_mappings (short_url, long_url) VALUES ($1, $2)", id, url)
+	userID, ok := ctx.Value(contextkeys.UserIDKey).(int)
+	if !ok {
+		return errors.New("user id not found in context")
+	}
+
+	_, err := d.db.ExecContext(ctx, "INSERT INTO url_mappings (short_url, long_url, user_id) VALUES ($1, $2, $3)", id, url, userID)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		if pgErr.Code == pgerrcode.UniqueViolation {
@@ -89,17 +96,21 @@ type InsertURL struct {
 }
 
 func (d *DB) BatchAddURL(ctx context.Context, urls []InsertURL) error {
+	userID, ok := ctx.Value(contextkeys.UserIDKey).(int)
+	if !ok {
+		return errors.New("user id not found in context")
+	}
 	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	stmt, err := tx.PrepareContext(ctx, "INSERT INTO url_mappings (short_url, long_url) VALUES ($1, $2)")
+	stmt, err := tx.PrepareContext(ctx, "INSERT INTO url_mappings (short_url, long_url, user_id) VALUES ($1, $2, $3)")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 	for _, url := range urls {
-		_, err = stmt.ExecContext(ctx, url.ShortURL, url.OriginalURL)
+		_, err = stmt.ExecContext(ctx, url.ShortURL, url.OriginalURL, userID)
 		if err != nil {
 			tx.Rollback()
 			return err
@@ -118,4 +129,38 @@ func (d *DB) GetURL(ctx context.Context, id string) (string, bool, error) {
 		return "", false, err
 	}
 	return url, true, nil
+}
+
+func (d *DB) AddUser(ctx context.Context) (int, error) {
+	var lastInsetID int64
+	row := d.db.QueryRowContext(ctx, "INSERT INTO users DEFAULT VALUES RETURNING id").Scan(&lastInsetID)
+	if row != nil && row.Error() != "" {
+		return 0, errors.New(row.Error())
+	}
+	return int(lastInsetID), nil
+}
+
+func (d *DB) GetUserURLs(ctx context.Context) (models.BatchUserURLs, error) {
+	userID, ok := ctx.Value(contextkeys.UserIDKey).(int)
+	if !ok {
+		return nil, errors.New("user id not found in context")
+	}
+	rows, err := d.db.QueryContext(ctx, "SELECT long_url as original_url, short_url FROM url_mappings WHERE user_id = $1", userID)
+	if err != nil {
+		return nil, err
+	}
+	if rows.Err() != nil {
+		return nil, rows.Err()
+	}
+	defer rows.Close()
+	var urls models.BatchUserURLs
+	for rows.Next() {
+		var url models.UserURL
+		err = rows.Scan(&url.OriginalURL, &url.ShortURL)
+		if err != nil {
+			return nil, err
+		}
+		urls = append(urls, url)
+	}
+	return urls, nil
 }

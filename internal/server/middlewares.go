@@ -1,8 +1,15 @@
 package server
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strings"
+
+	"github.com/vook88/go-url-shortener/internal/authn"
+	"github.com/vook88/go-url-shortener/internal/contextkeys"
+	"github.com/vook88/go-url-shortener/internal/logger"
+	"github.com/vook88/go-url-shortener/internal/storage"
 )
 
 func checkSupportedContentType(r *http.Request) bool {
@@ -44,4 +51,62 @@ func gzipMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(ow, r)
 	})
+}
+
+func AuthMiddlewareCreator(storage storage.URLStorage) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var userID int
+			log := logger.GetLogger()
+
+			cookie, err := r.Cookie("auth-token")
+			if err != nil {
+				if !errors.Is(err, http.ErrNoCookie) {
+					log.Debug().Msg(err.Error())
+					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+					return
+				}
+			} else {
+				userID, err = authn.GetUserID(cookie.Value)
+				if err == nil {
+					ctx2 := context.WithValue(r.Context(), contextkeys.UserIDKey, userID)
+					next.ServeHTTP(w, r.WithContext(ctx2))
+					return
+				}
+				if !errors.Is(err, authn.ErrTokenIsNotValid) {
+					log.Error().Msg(err.Error())
+					http.Error(w, "Not valid token", http.StatusUnauthorized)
+					return
+				}
+				if errors.Is(err, authn.ErrUserIDNotFound) {
+					log.Error().Msg(err.Error())
+					http.Error(w, "User ID not found in token", http.StatusUnauthorized)
+					return
+				}
+			}
+			userID, err = storage.GenerateUserID(r.Context())
+			if err != nil {
+				log.Debug().Msg(err.Error())
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+
+			encodedValue, err2 := authn.BuildJWTString(userID)
+			if err2 != nil {
+				log.Debug().Msg(err2.Error())
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+
+			http.SetCookie(w, &http.Cookie{
+				Name:     "auth-token",
+				Value:    encodedValue,
+				Path:     "/",
+				HttpOnly: true,
+			})
+
+			ctx2 := context.WithValue(r.Context(), contextkeys.UserIDKey, userID)
+			next.ServeHTTP(w, r.WithContext(ctx2))
+		})
+	}
 }
