@@ -73,14 +73,9 @@ func AuthMiddlewareCreator(storage storage.URLStorage) func(http.Handler) http.H
 					next.ServeHTTP(w, r.WithContext(ctx2))
 					return
 				}
+				log.Error().Msg(err.Error())
 				if !errors.Is(err, authn.ErrTokenIsNotValid) {
-					log.Error().Msg(err.Error())
-					http.Error(w, "Not valid token", http.StatusUnauthorized)
-					return
-				}
-				if errors.Is(err, authn.ErrUserIDNotFound) {
-					log.Error().Msg(err.Error())
-					http.Error(w, "User ID not found in token", http.StatusUnauthorized)
+					http.Error(w, err.Error(), http.StatusUnauthorized)
 					return
 				}
 			}

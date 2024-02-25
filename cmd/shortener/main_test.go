@@ -97,7 +97,6 @@ func TestGetShortURL(t *testing.T) {
 	id := u.Path[1:]
 
 	cookies := response.Result().Cookies()
-	//defer response.Result().Body.Close()
 
 	for _, tc := range testCases {
 		t.Run(tc.method, func(t *testing.T) {

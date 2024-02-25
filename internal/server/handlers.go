@@ -148,7 +148,7 @@ func (h *Handler) shortenURL(res http.ResponseWriter, req *http.Request) {
 	// сериализуем ответ сервера
 	enc := json.NewEncoder(res)
 	if err = enc.Encode(resp); err != nil {
-		log.Debug().Msg(`error encoding response" + log.Err(err)`)
+		log.Debug().Msgf("error encoding response: %s", err.Error())
 		return
 	}
 	log.Debug().Msg("sending HTTP 200 response")
@@ -184,7 +184,7 @@ func (h *Handler) batchShortenURLs(res http.ResponseWriter, req *http.Request) {
 	// сериализуем ответ сервера
 	enc := json.NewEncoder(res)
 	if err = enc.Encode(shortURLs); err != nil {
-		log.Debug().Msg(`error encoding response" + log.Err(err)`)
+		log.Debug().Msgf("error encoding response: %s", err.Error())
 		return
 	}
 	log.Debug().Msg("sending HTTP 200 response")
@@ -220,7 +220,7 @@ func (h *Handler) getUserURLs(res http.ResponseWriter, req *http.Request) {
 	// сериализуем ответ сервера
 	enc := json.NewEncoder(res)
 	if err = enc.Encode(urls); err != nil {
-		log.Debug().Msg(`error encoding response" + log.Err(err)`)
+		log.Debug().Msgf("error encoding response: %s", err.Error())
 		return
 	}
 	log.Debug().Msg("sending HTTP 200 response")
