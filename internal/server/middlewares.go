@@ -68,13 +68,17 @@ func AuthMiddlewareCreator(storage storage.URLStorage) func(http.Handler) http.H
 				}
 			} else {
 				userID, err = authn.GetUserID(cookie.Value)
+				log.Debug().Msgf("User ID: %d", userID)
 				if err == nil {
 					ctx2 := context.WithValue(r.Context(), contextkeys.UserIDKey, userID)
 					next.ServeHTTP(w, r.WithContext(ctx2))
 					return
 				}
 				log.Error().Msg(err.Error())
-				http.Error(w, err.Error(), http.StatusUnauthorized)
+				if !errors.Is(err, authn.ErrTokenIsNotValid) {
+					http.Error(w, err.Error(), http.StatusUnauthorized)
+					return
+				}
 			}
 			userID, err = storage.GenerateUserID(r.Context())
 			if err != nil {
