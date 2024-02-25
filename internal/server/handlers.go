@@ -2,12 +2,14 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
+	errors2 "github.com/vook88/go-url-shortener/internal/errors"
 	"github.com/vook88/go-url-shortener/internal/logger"
 	"github.com/vook88/go-url-shortener/internal/models"
 	"github.com/vook88/go-url-shortener/internal/service"
@@ -20,7 +22,7 @@ type Handler struct {
 	mux     *chi.Mux
 }
 
-func NewHandler(baseURL string, storage storage.URLStorage) *Handler {
+func NewHandler(baseURL string, storage storage.URLStorage, databaseDSN string) *Handler {
 	r := chi.NewRouter()
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
@@ -38,6 +40,8 @@ func NewHandler(baseURL string, storage storage.URLStorage) *Handler {
 	r.Post("/", h.generateShortURL)
 	r.Post("/api/shorten", h.shortenURL)
 	r.Get("/{id}", h.getShortURL)
+	r.Get("/ping", h.pingDB)
+	r.Post("/api/shorten/batch", h.batchShortenURLs)
 
 	return &h
 }
@@ -59,8 +63,16 @@ func (h *Handler) generateShortURL(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	shortURL, err := service.GenerateShortURL(string(url), h.storage, h.baseURL)
+	shortener := service.NewShortener(h.storage, h.baseURL)
+
+	shortURL, err := shortener.GenerateShortURL(req.Context(), string(url))
 	if err != nil {
+		var dupErr *errors2.DuplicateURLError
+		if errors.As(err, &dupErr) {
+			res.WriteHeader(http.StatusConflict)
+			_, _ = fmt.Fprintf(res, "%s", h.baseURL+"/"+err.Error())
+			return
+		}
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -75,7 +87,7 @@ func (h *Handler) getShortURL(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 	prefix := chi.URLParam(req, "id")
-	url, ok := h.storage.GetURL(prefix)
+	url, ok := h.storage.GetURL(req.Context(), prefix)
 	if !ok {
 		http.Error(res, "", http.StatusBadRequest)
 		return
@@ -100,10 +112,18 @@ func (h *Handler) shortenURL(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	shortURL, err := service.GenerateShortURL(r.URL, h.storage, h.baseURL)
+	shortener := service.NewShortener(h.storage, h.baseURL)
+	shortURL, err := shortener.GenerateShortURL(req.Context(), r.URL)
+	responseStatus := http.StatusCreated
 	if err != nil {
-		http.Error(res, err.Error(), http.StatusBadRequest)
-		return
+		var dupErr *errors2.DuplicateURLError
+		if !errors.As(err, &dupErr) {
+			http.Error(res, err.Error(), http.StatusBadRequest)
+			return
+
+		}
+		shortURL = h.baseURL + "/" + err.Error()
+		responseStatus = http.StatusConflict
 	}
 
 	resp := models.ResponseShortURL{
@@ -111,7 +131,7 @@ func (h *Handler) shortenURL(res http.ResponseWriter, req *http.Request) {
 	}
 
 	res.Header().Set("Content-Type", "application/json")
-	res.WriteHeader(http.StatusCreated)
+	res.WriteHeader(responseStatus)
 
 	// сериализуем ответ сервера
 	enc := json.NewEncoder(res)
@@ -120,4 +140,58 @@ func (h *Handler) shortenURL(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 	log.Debug().Msg("sending HTTP 200 response")
+}
+
+func (h *Handler) batchShortenURLs(res http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		http.Error(res, "Only GET requests are allowed!", http.StatusBadRequest)
+		return
+	}
+	defer req.Body.Close()
+
+	log := logger.GetLogger()
+	log.Debug().Msg("decoding request")
+
+	var request models.RequestBatchLongURLs
+	err := json.NewDecoder(req.Body).Decode(&request)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	s := service.NewShortener(h.storage, h.baseURL)
+	shortURLs, err := s.BatchGenerateShortURL(req.Context(), request)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	res.Header().Set("Content-Type", "application/json")
+	res.WriteHeader(http.StatusCreated)
+
+	// сериализуем ответ сервера
+	enc := json.NewEncoder(res)
+	if err = enc.Encode(shortURLs); err != nil {
+		log.Debug().Msg(`error encoding response" + log.Err(err)`)
+		return
+	}
+	log.Debug().Msg("sending HTTP 200 response")
+}
+
+func (h *Handler) pingDB(res http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		http.Error(res, "Only GET requests are allowed!", http.StatusBadRequest)
+		return
+	}
+	defer req.Body.Close()
+
+	log := logger.GetLogger()
+	log.Debug().Msg("ping DB")
+
+	if err := h.storage.Ping(req.Context()); err != nil {
+		log.Debug().Msg("cannot ping to database")
+		res.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	res.WriteHeader(http.StatusOK)
 }
