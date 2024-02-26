@@ -18,12 +18,12 @@ type FileURLStorage struct {
 
 var _ URLStorage = (*FileURLStorage)(nil)
 
-func (f *FileURLStorage) AddURL(ctx context.Context, id string, url string) error {
+func (f *FileURLStorage) AddURL(ctx context.Context, userID int, id string, url string) error {
 	userID, ok := ctx.Value(contextkeys.UserIDKey).(int)
 	if !ok {
 		return errors.New("user id not found in context")
 	}
-	err := f.MemoryURLStorage.AddURL(ctx, id, url)
+	err := f.MemoryURLStorage.AddURL(ctx, userID, id, url)
 	if err != nil {
 		return err
 	}
@@ -48,7 +48,7 @@ func (f *FileURLStorage) AddURL(ctx context.Context, id string, url string) erro
 	defer file.Close()
 
 	if err2 := json.NewEncoder(file).Encode(&event); err2 != nil {
-		err3 := f.MemoryURLStorage.DeleteURL(ctx, id)
+		err3 := f.MemoryURLStorage.DeleteURL(ctx, userID, id)
 		if err3 != nil {
 			return err3
 		}

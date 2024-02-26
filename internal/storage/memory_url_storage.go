@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	"github.com/vook88/go-url-shortener/internal/contextkeys"
 	"github.com/vook88/go-url-shortener/internal/database"
 	errors2 "github.com/vook88/go-url-shortener/internal/errors"
 	"github.com/vook88/go-url-shortener/internal/models"
@@ -22,11 +21,7 @@ func (s *MemoryURLStorage) GenerateUserID(_ context.Context) (int, error) {
 	return s.lastGeneratedUserID, nil
 }
 
-func (s *MemoryURLStorage) HasValue(ctx context.Context, value string) (bool, string, error) {
-	userID, ok := ctx.Value(contextkeys.UserIDKey).(int)
-	if !ok {
-		return false, "", errors.New("user id not found in context")
-	}
+func (s *MemoryURLStorage) HasValue(ctx context.Context, userID int, value string) (bool, string, error) {
 	for k, v := range s.urls[userID] {
 		if v == value {
 			return true, k, nil
@@ -35,15 +30,11 @@ func (s *MemoryURLStorage) HasValue(ctx context.Context, value string) (bool, st
 	return false, "", nil
 }
 
-func (s *MemoryURLStorage) AddURL(ctx context.Context, id string, url string) error {
-	userID, ok := ctx.Value(contextkeys.UserIDKey).(int)
-	if !ok {
-		return errors.New("user id not found in context")
-	}
+func (s *MemoryURLStorage) AddURL(ctx context.Context, userID int, id string, url string) error {
 	if id == "" {
 		return errors.New("short URL can't be empty")
 	}
-	yes, key, err := s.HasValue(ctx, url)
+	yes, key, err := s.HasValue(ctx, userID, url)
 	if err != nil {
 		return err
 	}
@@ -57,11 +48,7 @@ func (s *MemoryURLStorage) AddURL(ctx context.Context, id string, url string) er
 	return nil
 }
 
-func (s *MemoryURLStorage) BatchAddURL(ctx context.Context, urls []database.InsertURL) error {
-	userID, ok := ctx.Value(contextkeys.UserIDKey).(int)
-	if !ok {
-		return errors.New("user id not found in context")
-	}
+func (s *MemoryURLStorage) BatchAddURL(ctx context.Context, userID int, urls []database.InsertURL) error {
 	for _, url := range urls {
 		s.urls[userID][url.ShortURL] = url.OriginalURL
 	}
@@ -80,11 +67,7 @@ func (s *MemoryURLStorage) GetURL(_ context.Context, id string) (string, bool, e
 	return "", false, nil
 }
 
-func (s *MemoryURLStorage) GetUserURLs(ctx context.Context) (models.BatchUserURLs, error) {
-	userID, ok := ctx.Value(contextkeys.UserIDKey).(int)
-	if !ok {
-		return nil, errors.New("user id not found in context")
-	}
+func (s *MemoryURLStorage) GetUserURLs(ctx context.Context, userID int) (models.BatchUserURLs, error) {
 	var urls models.BatchUserURLs
 	for k, v := range s.urls[userID] {
 		urls = append(urls, models.UserURL{
@@ -100,11 +83,7 @@ func (s *MemoryURLStorage) Ping(_ context.Context) error {
 	return errors.New("MemoryURLStorage doesn't support ping")
 }
 
-func (s *MemoryURLStorage) DeleteURL(ctx context.Context, id string) error {
-	userID, ok := ctx.Value(contextkeys.UserIDKey).(int)
-	if !ok {
-		return errors.New("user id not found in context")
-	}
+func (s *MemoryURLStorage) DeleteURL(ctx context.Context, userID int, id string) error {
 	delete(s.urls[userID], id)
 	return nil
 }

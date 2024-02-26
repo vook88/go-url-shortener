@@ -12,6 +12,8 @@ import (
 	"github.com/vook88/go-url-shortener/internal/storage"
 )
 
+var cookieAuthName = "auth-token"
+
 func checkSupportedContentType(r *http.Request) bool {
 	contentType := r.Header.Get("Content-Type")
 	supportedContentTypes := []string{"application/json", "text/html"}
@@ -53,14 +55,15 @@ func gzipMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func AuthMiddlewareCreator(storage storage.URLStorage) func(http.Handler) http.Handler {
+func AuthMiddlewareCheckAndCreate(storage storage.URLStorage) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var userID int
 			log := logger.GetLogger()
 
-			cookie, err := r.Cookie("auth-token")
+			cookie, err := r.Cookie(cookieAuthName)
 			if err != nil {
+				log.Error().Msgf("Error when parsing Cookie: %s", err.Error())
 				if !errors.Is(err, http.ErrNoCookie) {
 					log.Debug().Msg(err.Error())
 					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -95,7 +98,7 @@ func AuthMiddlewareCreator(storage storage.URLStorage) func(http.Handler) http.H
 			}
 
 			http.SetCookie(w, &http.Cookie{
-				Name:     "auth-token",
+				Name:     cookieAuthName,
 				Value:    encodedValue,
 				Path:     "/",
 				HttpOnly: true,
@@ -105,4 +108,33 @@ func AuthMiddlewareCreator(storage storage.URLStorage) func(http.Handler) http.H
 			next.ServeHTTP(w, r.WithContext(ctx2))
 		})
 	}
+}
+
+func AuthMiddlewareCheckOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log := logger.GetLogger()
+		cookie, err := r.Cookie(cookieAuthName)
+		if err != nil {
+			log.Error().Msgf("Error when parsing Cookie: %s", err.Error())
+			if !errors.Is(err, http.ErrNoCookie) {
+				log.Debug().Msg(err.Error())
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		userID, err := authn.GetUserID(cookie.Value)
+		if err != nil {
+			log.Error().Msg(err.Error())
+			if !errors.Is(err, authn.ErrTokenIsNotValid) {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+			}
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		ctx2 := context.WithValue(r.Context(), contextkeys.UserIDKey, userID)
+		next.ServeHTTP(w, r.WithContext(ctx2))
+	})
 }

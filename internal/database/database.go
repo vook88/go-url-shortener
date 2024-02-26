@@ -12,7 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
 
-	"github.com/vook88/go-url-shortener/internal/contextkeys"
 	errors2 "github.com/vook88/go-url-shortener/internal/errors"
 	"github.com/vook88/go-url-shortener/internal/models"
 )
@@ -70,12 +69,7 @@ func (d *DB) getShortURLByLongURL(ctx context.Context, id string) (string, bool,
 	return shortURL, true, nil
 }
 
-func (d *DB) AddURL(ctx context.Context, id string, url string) error {
-	userID, ok := ctx.Value(contextkeys.UserIDKey).(int)
-	if !ok {
-		return errors.New("user id not found in context")
-	}
-
+func (d *DB) AddURL(ctx context.Context, userID int, id string, url string) error {
 	_, err := d.db.ExecContext(ctx, "INSERT INTO url_mappings (short_url, long_url, user_id) VALUES ($1, $2, $3)", id, url, userID)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
@@ -95,11 +89,7 @@ type InsertURL struct {
 	OriginalURL string
 }
 
-func (d *DB) BatchAddURL(ctx context.Context, urls []InsertURL) error {
-	userID, ok := ctx.Value(contextkeys.UserIDKey).(int)
-	if !ok {
-		return errors.New("user id not found in context")
-	}
+func (d *DB) BatchAddURL(ctx context.Context, userID int, urls []InsertURL) error {
 	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -140,11 +130,7 @@ func (d *DB) AddUser(ctx context.Context) (int, error) {
 	return int(lastInsetID), nil
 }
 
-func (d *DB) GetUserURLs(ctx context.Context) (models.BatchUserURLs, error) {
-	userID, ok := ctx.Value(contextkeys.UserIDKey).(int)
-	if !ok {
-		return nil, errors.New("user id not found in context")
-	}
+func (d *DB) GetUserURLs(ctx context.Context, userID int) (models.BatchUserURLs, error) {
 	rows, err := d.db.QueryContext(ctx, "SELECT long_url as original_url, short_url FROM url_mappings WHERE user_id = $1", userID)
 	if err != nil {
 		return nil, err

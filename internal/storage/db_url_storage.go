@@ -13,16 +13,16 @@ type DBURLStorage struct {
 	db *database.DB
 }
 
-func (s *DBURLStorage) AddURL(ctx context.Context, id string, url string) error {
-	err := s.db.AddURL(ctx, id, url)
+func (s *DBURLStorage) AddURL(ctx context.Context, userID int, id string, url string) error {
+	err := s.db.AddURL(ctx, userID, id, url)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *DBURLStorage) BatchAddURL(ctx context.Context, urls []database.InsertURL) error {
-	err := s.db.BatchAddURL(ctx, urls)
+func (s *DBURLStorage) BatchAddURL(ctx context.Context, userID int, urls []database.InsertURL) error {
+	err := s.db.BatchAddURL(ctx, userID, urls)
 	if err != nil {
 		return err
 	}
@@ -37,8 +37,8 @@ func (s *DBURLStorage) GetURL(ctx context.Context, id string) (string, bool, err
 	return url, b, nil
 }
 
-func (s *DBURLStorage) GetUserURLs(ctx context.Context) (models.BatchUserURLs, error) {
-	return s.db.GetUserURLs(ctx)
+func (s *DBURLStorage) GetUserURLs(ctx context.Context, userID int) (models.BatchUserURLs, error) {
+	return s.db.GetUserURLs(ctx, userID)
 }
 
 func (s *DBURLStorage) Ping(ctx context.Context) error {

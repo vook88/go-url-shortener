@@ -20,10 +20,10 @@ type Event struct {
 }
 
 type URLStorage interface {
-	AddURL(ctx context.Context, id string, url string) error
-	BatchAddURL(ctx context.Context, insertURLs []database.InsertURL) error
+	AddURL(ctx context.Context, userID int, id string, url string) error
+	BatchAddURL(ctx context.Context, userID int, insertURLs []database.InsertURL) error
 	GetURL(ctx context.Context, id string) (string, bool, error)
-	GetUserURLs(ctx context.Context) (models.BatchUserURLs, error)
+	GetUserURLs(ctx context.Context, userID int) (models.BatchUserURLs, error)
 	Ping(ctx context.Context) error
 	GenerateUserID(ctx context.Context) (int, error)
 }

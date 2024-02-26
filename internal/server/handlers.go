@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/vook88/go-url-shortener/internal/contextkeys"
 	errors2 "github.com/vook88/go-url-shortener/internal/errors"
 	"github.com/vook88/go-url-shortener/internal/logger"
 	"github.com/vook88/go-url-shortener/internal/models"
@@ -23,7 +24,7 @@ type Handler struct {
 	mux     *chi.Mux
 }
 
-func NewHandler(ctx context.Context, baseURL string, storage storage.URLStorage) *Handler {
+func NewHandler(_ context.Context, baseURL string, storage storage.URLStorage) *Handler {
 	r := chi.NewRouter()
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
@@ -31,7 +32,6 @@ func NewHandler(ctx context.Context, baseURL string, storage storage.URLStorage)
 
 	r.Use(logger.LoggerMiddleware)
 	r.Use(gzipMiddleware)
-	r.Use(AuthMiddlewareCreator(storage))
 
 	h := Handler{
 		baseURL: baseURL,
@@ -39,12 +39,12 @@ func NewHandler(ctx context.Context, baseURL string, storage storage.URLStorage)
 		mux:     r,
 	}
 
-	r.Post("/", h.generateShortURL)
-	r.Post("/api/shorten", h.shortenURL)
+	r.With(AuthMiddlewareCheckAndCreate(storage)).Post("/", h.generateShortURL)
+	r.With(AuthMiddlewareCheckAndCreate(storage)).Post("/api/shorten", h.shortenURL)
 	r.Get("/{id}", h.getShortURL)
 	r.Get("/ping", h.pingDB)
-	r.Post("/api/shorten/batch", h.batchShortenURLs)
-	r.Get("/api/user/urls", h.getUserURLs)
+	r.With(AuthMiddlewareCheckAndCreate(storage)).Post("/api/shorten/batch", h.batchShortenURLs)
+	r.With(AuthMiddlewareCheckOnly).Get("/api/user/urls", h.getUserURLs)
 
 	return &h
 }
@@ -66,9 +66,15 @@ func (h *Handler) generateShortURL(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	userID, ok := req.Context().Value(contextkeys.UserIDKey).(int)
+	if !ok {
+		http.Error(res, "user id not found in context", http.StatusInternalServerError)
+		return
+	}
+
 	shortener := service.NewShortener(h.storage, h.baseURL)
 
-	shortURL, err := shortener.GenerateShortURL(req.Context(), string(url))
+	shortURL, err := shortener.GenerateShortURL(req.Context(), userID, string(url))
 	if err != nil {
 		var dupErr *errors2.DuplicateURLError
 		if errors.As(err, &dupErr) {
@@ -125,7 +131,13 @@ func (h *Handler) shortenURL(res http.ResponseWriter, req *http.Request) {
 	}
 
 	shortener := service.NewShortener(h.storage, h.baseURL)
-	shortURL, err := shortener.GenerateShortURL(req.Context(), r.URL)
+
+	userID, ok := req.Context().Value(contextkeys.UserIDKey).(int)
+	if !ok {
+		http.Error(res, "user id not found in context", http.StatusInternalServerError)
+		return
+	}
+	shortURL, err := shortener.GenerateShortURL(req.Context(), userID, r.URL)
 	responseStatus := http.StatusCreated
 	if err != nil {
 		var dupErr *errors2.DuplicateURLError
@@ -172,7 +184,13 @@ func (h *Handler) batchShortenURLs(res http.ResponseWriter, req *http.Request) {
 	}
 
 	s := service.NewShortener(h.storage, h.baseURL)
-	shortURLs, err := s.BatchGenerateShortURL(req.Context(), request)
+
+	userID, ok := req.Context().Value(contextkeys.UserIDKey).(int)
+	if !ok {
+		http.Error(res, "user id not found in context", http.StatusInternalServerError)
+		return
+	}
+	shortURLs, err := s.BatchGenerateShortURL(req.Context(), userID, request)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
@@ -195,12 +213,17 @@ func (h *Handler) getUserURLs(res http.ResponseWriter, req *http.Request) {
 		http.Error(res, "Only GET requests are allowed!", http.StatusBadRequest)
 		return
 	}
-	defer req.Body.Close()
 
 	log := logger.GetLogger()
 	log.Debug().Msg("getting user URLs")
 
-	urls, err := h.storage.GetUserURLs(req.Context())
+	userID, ok := req.Context().Value(contextkeys.UserIDKey).(int)
+	if !ok {
+		http.Error(res, "user id not found in context", http.StatusInternalServerError)
+		return
+	}
+
+	urls, err := h.storage.GetUserURLs(req.Context(), userID)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return

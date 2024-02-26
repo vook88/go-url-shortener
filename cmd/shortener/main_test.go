@@ -96,14 +96,9 @@ func TestGetShortURL(t *testing.T) {
 	}
 	id := u.Path[1:]
 
-	cookies := response.Result().Cookies()
-
 	for _, tc := range testCases {
 		t.Run(tc.method, func(t *testing.T) {
 			request1, _ := http.NewRequest(tc.method, `/`+id, nil)
-			for _, cookie := range cookies {
-				request1.AddCookie(cookie)
-			}
 			response1 := httptest.NewRecorder()
 			h.ServeHTTP(response1, request1)
 
@@ -115,4 +110,54 @@ func TestGetShortURL(t *testing.T) {
 
 		})
 	}
+}
+
+func TestGetUserURLs(t *testing.T) {
+
+	h := setupHandler()
+
+	t.Run("Without Cookie", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, `/api/user/urls`, nil)
+		response := httptest.NewRecorder()
+		h.ServeHTTP(response, request)
+
+		assert.Equal(t, http.StatusUnauthorized, response.Code, "Код ответа не совпадает с ожидаемым")
+	})
+
+	t.Run("With Cookie / Empty response", func(t *testing.T) {
+		cookie := http.Cookie{
+			Name:  "auth-token",
+			Value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3MDkwNTE0MzksIlVzZXJJRCI6NX0.lyRcL7wTfGm4L4sLj2MLsC1_sPB5veyinQHAVy1ma_s",
+		}
+
+		request, _ := http.NewRequest(http.MethodGet, `/api/user/urls`, nil)
+		request.AddCookie(&cookie)
+		response := httptest.NewRecorder()
+		h.ServeHTTP(response, request)
+
+		assert.Equal(t, http.StatusNoContent, response.Code, "Код ответа не совпадает с ожидаемым")
+	})
+
+	t.Run("With Cookie / Not empty response", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"url": "https://longurl.com"}`)
+
+		request, _ := http.NewRequest(http.MethodPost, "/api/shorten", body)
+		response := httptest.NewRecorder()
+		h.ServeHTTP(response, request)
+
+		res := response.Result()
+		defer res.Body.Close()
+
+		cookies := res.Cookies()
+
+		request1, _ := http.NewRequest(http.MethodGet, `/api/user/urls`, nil)
+		for _, c := range cookies {
+			request1.AddCookie(c)
+		}
+
+		response1 := httptest.NewRecorder()
+		h.ServeHTTP(response1, request1)
+
+		assert.Equal(t, http.StatusOK, response1.Code, "Код ответа не совпадает с ожидаемым")
+	})
 }

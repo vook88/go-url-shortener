@@ -15,7 +15,7 @@ func TestMemoryURLStorage(t *testing.T) {
 	storage := &MemoryURLStorage{urls: make(map[int]map[string]string)}
 
 	// Тестируем добавление URL
-	err := storage.AddURL(ctx, "test1", "http://example.com/test1")
+	err := storage.AddURL(ctx, 5, "test1", "http://example.com/test1")
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -31,7 +31,7 @@ func TestMemoryURLStorage(t *testing.T) {
 	}
 
 	// Тестируем удаление URL
-	storage.DeleteURL(ctx, "test1")
+	storage.DeleteURL(ctx, 5, "test1")
 	_, ok, err = storage.GetURL(ctx, "test1")
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
@@ -57,7 +57,7 @@ func TestFileURLStorage(t *testing.T) {
 	}
 
 	// Тестируем добавление URL
-	err = storage.AddURL(ctx, "test2", "http://example.com/test2")
+	err = storage.AddURL(ctx, 5, "test2", "http://example.com/test2")
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
