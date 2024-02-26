@@ -3,12 +3,9 @@ package storage
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"os"
 
 	"github.com/google/uuid"
-
-	"github.com/vook88/go-url-shortener/internal/contextkeys"
 )
 
 type FileURLStorage struct {
@@ -19,10 +16,6 @@ type FileURLStorage struct {
 var _ URLStorage = (*FileURLStorage)(nil)
 
 func (f *FileURLStorage) AddURL(ctx context.Context, userID int, id string, url string) error {
-	userID, ok := ctx.Value(contextkeys.UserIDKey).(int)
-	if !ok {
-		return errors.New("user id not found in context")
-	}
 	err := f.MemoryURLStorage.AddURL(ctx, userID, id, url)
 	if err != nil {
 		return err
