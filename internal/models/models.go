@@ -28,3 +28,5 @@ type UserURL struct {
 }
 
 type BatchUserURLs []UserURL
+
+type RequestDeleteShortURL []string

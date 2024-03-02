@@ -83,7 +83,16 @@ func (s *MemoryURLStorage) Ping(_ context.Context) error {
 	return errors.New("MemoryURLStorage doesn't support ping")
 }
 
-func (s *MemoryURLStorage) DeleteURL(ctx context.Context, userID int, id string) error {
+func (s *MemoryURLStorage) DeleteURL(_ context.Context, userID int, id string) error {
 	delete(s.urls[userID], id)
+	return nil
+}
+
+func (s *MemoryURLStorage) BatchDeleteURLs(_ context.Context, urls []string) error {
+	for _, url := range urls {
+		for _, v := range s.urls {
+			delete(v, url)
+		}
+	}
 	return nil
 }

@@ -24,7 +24,9 @@ type Handler struct {
 	mux     *chi.Mux
 }
 
-func NewHandler(_ context.Context, baseURL string, storage storage.URLStorage) *Handler {
+func NewHandler(ctx context.Context, baseURL string, storage storage.URLStorage) *Handler {
+	go service.BatchDeleteURLs(ctx, storage, 10)
+
 	r := chi.NewRouter()
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
@@ -45,6 +47,7 @@ func NewHandler(_ context.Context, baseURL string, storage storage.URLStorage) *
 	r.Get("/ping", h.pingDB)
 	r.With(AuthMiddlewareCheckAndCreate(storage)).Post("/api/shorten/batch", h.batchShortenURLs)
 	r.With(AuthMiddlewareCheckOnly).Get("/api/user/urls", h.getUserURLs)
+	r.Delete("/api/user/urls", h.deleteUserURLs)
 
 	return &h
 }
@@ -98,10 +101,14 @@ func (h *Handler) getShortURL(res http.ResponseWriter, req *http.Request) {
 	log := logger.GetLogger()
 	prefix := chi.URLParam(req, "id")
 	url, ok, err := h.storage.GetURL(req.Context(), prefix)
-	log.Debug().Msgf("URL: %s", url)
+	log.Debug().Msgf("URL: %s, ShortURL: %s", url, prefix)
 
 	if err != nil {
 		log.Error().Msg(err.Error())
+		if errors.Is(err, errors2.ErrURLDeleted) {
+			http.Error(res, "URL not found", http.StatusGone)
+			return
+		}
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -248,6 +255,29 @@ func (h *Handler) getUserURLs(res http.ResponseWriter, req *http.Request) {
 	}
 	log.Debug().Msg("sending HTTP 200 response")
 
+}
+
+func (h *Handler) deleteUserURLs(res http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodDelete {
+		http.Error(res, "Only DELETE requests are allowed!", http.StatusBadRequest)
+		return
+	}
+
+	log := logger.GetLogger()
+	log.Debug().Msg("deleting user URLs")
+
+	var urls models.RequestDeleteShortURL
+	err := json.NewDecoder(req.Body).Decode(&urls)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	s := service.NewShortener(h.storage, h.baseURL)
+	s.BatchDeleteShortURL(req.Context(), urls)
+
+	res.WriteHeader(http.StatusAccepted)
+	log.Debug().Msg("sending HTTP 202 response")
 }
 
 func (h *Handler) pingDB(res http.ResponseWriter, req *http.Request) {

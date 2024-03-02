@@ -24,8 +24,8 @@ func LoggerMiddleware(next http.Handler) http.Handler {
 
 		log.Info().
 			Str("Type", "Request").
-			Str("URI", uri).
 			Str("Method", method).
+			Str("URI", uri).
 			Dur("Duration", duration).
 			Msg("")
 

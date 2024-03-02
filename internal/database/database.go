@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
@@ -110,15 +112,21 @@ func (d *DB) BatchAddURL(ctx context.Context, userID int, urls []InsertURL) erro
 }
 
 func (d *DB) GetURL(ctx context.Context, id string) (string, bool, error) {
-	var url string
-	err := d.db.QueryRowContext(ctx, "SELECT long_url FROM url_mappings WHERE short_url = $1", id).Scan(&url)
+	var row struct {
+		url       string       `db:"long_url"`
+		deletedAt sql.NullTime `db:"deleted_at"`
+	}
+	err := d.db.QueryRowContext(ctx, "SELECT long_url, deleted_at FROM url_mappings WHERE short_url = $1", id).Scan(&row.url, &row.deletedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", false, nil
 		}
 		return "", false, err
 	}
-	return url, true, nil
+	if row.deletedAt.Valid {
+		return "", false, errors2.ErrURLDeleted
+	}
+	return row.url, true, nil
 }
 
 func (d *DB) AddUser(ctx context.Context) (int, error) {
@@ -149,4 +157,26 @@ func (d *DB) GetUserURLs(ctx context.Context, userID int) (models.BatchUserURLs,
 		urls = append(urls, url)
 	}
 	return urls, nil
+}
+
+func (d *DB) BatchDeleteURLs(ctx context.Context, urls []string) error {
+	if len(urls) == 0 {
+		return nil // Нет URL для удаления
+	}
+
+	placeholders := make([]string, len(urls))
+	args := make([]interface{}, len(urls))
+	for i, url := range urls {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = url
+	}
+	query := fmt.Sprintf("UPDATE url_mappings SET deleted_at = NOW() WHERE short_url IN (%s)", strings.Join(placeholders, ","))
+
+	// Выполняем запрос
+	_, err := d.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

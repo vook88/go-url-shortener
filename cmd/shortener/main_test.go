@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/vook88/go-url-shortener/internal/authn"
 	"github.com/vook88/go-url-shortener/internal/config"
 	"github.com/vook88/go-url-shortener/internal/server"
 	storage2 "github.com/vook88/go-url-shortener/internal/storage"
@@ -125,13 +126,19 @@ func TestGetUserURLs(t *testing.T) {
 	})
 
 	t.Run("With Cookie / Empty response", func(t *testing.T) {
-		cookie := http.Cookie{
-			Name:  "auth-token",
-			Value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3MDkwNTE0MzksIlVzZXJJRCI6NX0.lyRcL7wTfGm4L4sLj2MLsC1_sPB5veyinQHAVy1ma_s",
+		encodedValue, err2 := authn.BuildJWTString(2)
+		if err2 != nil {
+			t.Errorf("Expected no error, got %v", err2)
+			return
 		}
 
 		request, _ := http.NewRequest(http.MethodGet, `/api/user/urls`, nil)
-		request.AddCookie(&cookie)
+		request.AddCookie(&http.Cookie{
+			Name:     server.CookieAuthName,
+			Value:    encodedValue,
+			Path:     "/",
+			HttpOnly: true,
+		})
 		response := httptest.NewRecorder()
 		h.ServeHTTP(response, request)
 
