@@ -48,3 +48,7 @@ func (s *DBURLStorage) Ping(ctx context.Context) error {
 func (s *DBURLStorage) GenerateUserID(ctx context.Context) (int, error) {
 	return s.db.AddUser(ctx)
 }
+
+func (s *DBURLStorage) BatchDeleteURLs(ctx context.Context, urls []string) error {
+	return s.db.BatchDeleteURLs(ctx, urls)
+}

@@ -12,7 +12,7 @@ import (
 	"github.com/vook88/go-url-shortener/internal/storage"
 )
 
-var cookieAuthName = "auth-token"
+var CookieAuthName = "auth-token"
 
 func checkSupportedContentType(r *http.Request) bool {
 	contentType := r.Header.Get("Content-Type")
@@ -61,7 +61,7 @@ func AuthMiddlewareCheckAndCreate(storage storage.URLStorage) func(http.Handler)
 			var userID int
 			log := logger.GetLogger()
 
-			cookie, err := r.Cookie(cookieAuthName)
+			cookie, err := r.Cookie(CookieAuthName)
 			if err != nil {
 				log.Error().Msgf("Error when parsing Cookie: %s", err.Error())
 				if !errors.Is(err, http.ErrNoCookie) {
@@ -98,7 +98,7 @@ func AuthMiddlewareCheckAndCreate(storage storage.URLStorage) func(http.Handler)
 			}
 
 			http.SetCookie(w, &http.Cookie{
-				Name:     cookieAuthName,
+				Name:     CookieAuthName,
 				Value:    encodedValue,
 				Path:     "/",
 				HttpOnly: true,
@@ -113,7 +113,7 @@ func AuthMiddlewareCheckAndCreate(storage storage.URLStorage) func(http.Handler)
 func AuthMiddlewareCheckOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log := logger.GetLogger()
-		cookie, err := r.Cookie(cookieAuthName)
+		cookie, err := r.Cookie(CookieAuthName)
 		if err != nil {
 			log.Error().Msgf("Error when parsing Cookie: %s", err.Error())
 			if !errors.Is(err, http.ErrNoCookie) {

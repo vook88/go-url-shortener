@@ -26,6 +26,7 @@ type URLStorage interface {
 	GetUserURLs(ctx context.Context, userID int) (models.BatchUserURLs, error)
 	Ping(ctx context.Context) error
 	GenerateUserID(ctx context.Context) (int, error)
+	BatchDeleteURLs(ctx context.Context, urls []string) error
 }
 
 func New(ctx context.Context, config *config.Config) (URLStorage, error) {
@@ -50,7 +51,7 @@ func New(ctx context.Context, config *config.Config) (URLStorage, error) {
 	}
 
 	defer file.Close()
-
+	lastGeneratedUserID := 0
 	for {
 		event := &Event{}
 		err2 := json.NewDecoder(file).Decode(event)
@@ -61,12 +62,14 @@ func New(ctx context.Context, config *config.Config) (URLStorage, error) {
 
 			return nil, err2
 		}
-
+		if event.UserID > lastGeneratedUserID {
+			lastGeneratedUserID = event.UserID
+		}
 		urls[event.UserID][event.ShortURL] = event.OriginalURL
 	}
 
 	return &FileURLStorage{
 		filepath:         config.FileStoragePath,
-		MemoryURLStorage: &MemoryURLStorage{urls: urls},
+		MemoryURLStorage: &MemoryURLStorage{urls: urls, lastGeneratedUserID: lastGeneratedUserID},
 	}, nil
 }
