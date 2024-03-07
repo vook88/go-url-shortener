@@ -3,38 +3,41 @@ package logger
 import (
 	"net/http"
 	"time"
+
+	"github.com/rs/zerolog"
 )
 
-func LoggerMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log := GetLogger()
-		start := time.Now()
+func LoggerMiddleware(log zerolog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
 
-		// эндпоинт /ping
-		uri := r.RequestURI
-		// метод запроса
-		method := r.Method
+			// эндпоинт /ping
+			uri := r.RequestURI
+			// метод запроса
+			method := r.Method
 
-		lw := loggingResponseWriter{
-			ResponseWriter: w, // встраиваем оригинальный http.ResponseWriter
-		}
-		next.ServeHTTP(&lw, r)
+			lw := loggingResponseWriter{
+				ResponseWriter: w, // встраиваем оригинальный http.ResponseWriter
+			}
+			next.ServeHTTP(&lw, r)
 
-		duration := time.Since(start)
+			duration := time.Since(start)
 
-		log.Info().
-			Str("Type", "Request").
-			Str("Method", method).
-			Str("URI", uri).
-			Dur("Duration", duration).
-			Msg("")
+			log.Info().
+				Str("Type", "Request").
+				Str("Method", method).
+				Str("URI", uri).
+				Dur("Duration", duration).
+				Msg("")
 
-		log.Info().
-			Str("Type", "Response").
-			Int("StatusCode", lw.status).
-			Int("Size", lw.size).
-			Msg("")
-	})
+			log.Info().
+				Str("Type", "Response").
+				Int("StatusCode", lw.status).
+				Int("Size", lw.size).
+				Msg("")
+		})
+	}
 }
 
 type (
