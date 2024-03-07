@@ -9,6 +9,8 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 
 	"github.com/vook88/go-url-shortener/internal/contextkeys"
 	errors2 "github.com/vook88/go-url-shortener/internal/errors"
@@ -21,32 +23,34 @@ import (
 type Handler struct {
 	baseURL string
 	storage storage.URLStorage
+	log     zerolog.Logger
 	mux     *chi.Mux
 }
 
-func NewHandler(ctx context.Context, baseURL string, storage storage.URLStorage) *Handler {
-	go service.BatchDeleteURLs(ctx, storage, 10)
+func NewHandler(ctx context.Context, baseURL string, storage storage.URLStorage, log zerolog.Logger) *Handler {
+	go service.BatchDeleteURLs(ctx, storage, log, 10)
 
 	r := chi.NewRouter()
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 	})
 
-	r.Use(logger.LoggerMiddleware)
+	r.Use(logger.LoggerMiddleware(log))
 	r.Use(gzipMiddleware)
 
 	h := Handler{
 		baseURL: baseURL,
 		storage: storage,
+		log:     log,
 		mux:     r,
 	}
 
-	r.With(AuthMiddlewareCheckAndCreate(storage)).Post("/", h.generateShortURL)
-	r.With(AuthMiddlewareCheckAndCreate(storage)).Post("/api/shorten", h.shortenURL)
+	r.With(AuthMiddlewareCheckAndCreate(storage, log)).Post("/", h.generateShortURL)
+	r.With(AuthMiddlewareCheckAndCreate(storage, log)).Post("/api/shorten", h.shortenURL)
 	r.Get("/{id}", h.getShortURL)
 	r.Get("/ping", h.pingDB)
-	r.With(AuthMiddlewareCheckAndCreate(storage)).Post("/api/shorten/batch", h.batchShortenURLs)
-	r.With(AuthMiddlewareCheckOnly).Get("/api/user/urls", h.getUserURLs)
+	r.With(AuthMiddlewareCheckAndCreate(storage, log)).Post("/api/shorten/batch", h.batchShortenURLs)
+	r.With(AuthMiddlewareCheckOnly(log)).Get("/api/user/urls", h.getUserURLs)
 	r.Delete("/api/user/urls", h.deleteUserURLs)
 
 	return &h
@@ -98,13 +102,12 @@ func (h *Handler) getShortURL(res http.ResponseWriter, req *http.Request) {
 		http.Error(res, "Only GET requests are allowed!", http.StatusBadRequest)
 		return
 	}
-	log := logger.GetLogger()
 	prefix := chi.URLParam(req, "id")
 	url, ok, err := h.storage.GetURL(req.Context(), prefix)
-	log.Debug().Msgf("URL: %s, ShortURL: %s", url, prefix)
+	h.log.Debug().Msgf("URL: %s, ShortURL: %s", url, prefix)
 
 	if err != nil {
-		log.Error().Msg(err.Error())
+		h.log.Error().Msg(err.Error())
 		if errors.Is(err, errors2.ErrURLDeleted) {
 			http.Error(res, "URL not found", http.StatusGone)
 			return
@@ -113,7 +116,7 @@ func (h *Handler) getShortURL(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if !ok {
-		log.Error().Msg("URL not found")
+		h.log.Error().Msg("URL not found")
 		http.Error(res, "", http.StatusBadRequest)
 		return
 	}
@@ -127,12 +130,11 @@ func (h *Handler) shortenURL(res http.ResponseWriter, req *http.Request) {
 	}
 	defer req.Body.Close()
 
-	log := logger.GetLogger()
-	log.Debug().Msg("decoding request")
+	h.log.Debug().Msg("decoding request")
 	var r models.RequestShortURL
 	dec := json.NewDecoder(req.Body)
 	if err := dec.Decode(&r); err != nil {
-		log.Debug().Msg("cannot decode request JSON body")
+		h.log.Debug().Msg("cannot decode request JSON body")
 		res.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -167,10 +169,10 @@ func (h *Handler) shortenURL(res http.ResponseWriter, req *http.Request) {
 	// сериализуем ответ сервера
 	enc := json.NewEncoder(res)
 	if err = enc.Encode(resp); err != nil {
-		log.Debug().Msgf("error encoding response: %s", err.Error())
+		h.log.Debug().Msgf("error encoding response: %s", err.Error())
 		return
 	}
-	log.Debug().Msg("sending HTTP 200 response")
+	h.log.Debug().Msg("sending HTTP 200 response")
 }
 
 func (h *Handler) batchShortenURLs(res http.ResponseWriter, req *http.Request) {
@@ -180,8 +182,7 @@ func (h *Handler) batchShortenURLs(res http.ResponseWriter, req *http.Request) {
 	}
 	defer req.Body.Close()
 
-	log := logger.GetLogger()
-	log.Debug().Msg("decoding request")
+	h.log.Debug().Msg("decoding request")
 
 	var request models.RequestBatchLongURLs
 	err := json.NewDecoder(req.Body).Decode(&request)
@@ -209,10 +210,10 @@ func (h *Handler) batchShortenURLs(res http.ResponseWriter, req *http.Request) {
 	// сериализуем ответ сервера
 	enc := json.NewEncoder(res)
 	if err = enc.Encode(shortURLs); err != nil {
-		log.Debug().Msgf("error encoding response: %s", err.Error())
+		h.log.Debug().Msgf("error encoding response: %s", err.Error())
 		return
 	}
-	log.Debug().Msg("sending HTTP 200 response")
+	h.log.Debug().Msg("sending HTTP 200 response")
 }
 
 func (h *Handler) getUserURLs(res http.ResponseWriter, req *http.Request) {
@@ -221,7 +222,6 @@ func (h *Handler) getUserURLs(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	log := logger.GetLogger()
 	log.Debug().Msg("getting user URLs")
 
 	userID, ok := req.Context().Value(contextkeys.UserIDKey).(int)
@@ -250,10 +250,10 @@ func (h *Handler) getUserURLs(res http.ResponseWriter, req *http.Request) {
 	// сериализуем ответ сервера
 	enc := json.NewEncoder(res)
 	if err = enc.Encode(urls); err != nil {
-		log.Debug().Msgf("error encoding response: %s", err.Error())
+		h.log.Debug().Msgf("error encoding response: %s", err.Error())
 		return
 	}
-	log.Debug().Msg("sending HTTP 200 response")
+	h.log.Debug().Msg("sending HTTP 200 response")
 
 }
 
@@ -263,8 +263,7 @@ func (h *Handler) deleteUserURLs(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	log := logger.GetLogger()
-	log.Debug().Msg("deleting user URLs")
+	h.log.Debug().Msg("deleting user URLs")
 
 	var urls models.RequestDeleteShortURL
 	err := json.NewDecoder(req.Body).Decode(&urls)
@@ -277,7 +276,7 @@ func (h *Handler) deleteUserURLs(res http.ResponseWriter, req *http.Request) {
 	s.BatchDeleteShortURL(req.Context(), urls)
 
 	res.WriteHeader(http.StatusAccepted)
-	log.Debug().Msg("sending HTTP 202 response")
+	h.log.Debug().Msg("sending HTTP 202 response")
 }
 
 func (h *Handler) pingDB(res http.ResponseWriter, req *http.Request) {
@@ -287,11 +286,10 @@ func (h *Handler) pingDB(res http.ResponseWriter, req *http.Request) {
 	}
 	defer req.Body.Close()
 
-	log := logger.GetLogger()
-	log.Debug().Msg("ping DB")
+	h.log.Debug().Msg("ping DB")
 
 	if err := h.storage.Ping(req.Context()); err != nil {
-		log.Debug().Msg("cannot ping to database")
+		h.log.Debug().Msg("cannot ping to database")
 		res.WriteHeader(http.StatusInternalServerError)
 		return
 	}

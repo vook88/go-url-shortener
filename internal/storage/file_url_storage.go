@@ -50,7 +50,3 @@ func (f *FileURLStorage) AddURL(ctx context.Context, userID int, id string, url 
 
 	return nil
 }
-
-func (f *FileURLStorage) GenerateUserID(ctx context.Context) (int, error) {
-	return 1, nil
-}

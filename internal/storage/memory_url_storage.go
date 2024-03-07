@@ -21,7 +21,7 @@ func (s *MemoryURLStorage) GenerateUserID(_ context.Context) (int, error) {
 	return s.lastGeneratedUserID, nil
 }
 
-func (s *MemoryURLStorage) HasValue(ctx context.Context, userID int, value string) (bool, string, error) {
+func (s *MemoryURLStorage) HasValue(_ context.Context, userID int, value string) (bool, string, error) {
 	for k, v := range s.urls[userID] {
 		if v == value {
 			return true, k, nil
@@ -48,7 +48,7 @@ func (s *MemoryURLStorage) AddURL(ctx context.Context, userID int, id string, ur
 	return nil
 }
 
-func (s *MemoryURLStorage) BatchAddURL(ctx context.Context, userID int, urls []database.InsertURL) error {
+func (s *MemoryURLStorage) BatchAddURL(_ context.Context, userID int, urls []database.InsertURL) error {
 	for _, url := range urls {
 		s.urls[userID][url.ShortURL] = url.OriginalURL
 	}
@@ -67,7 +67,7 @@ func (s *MemoryURLStorage) GetURL(_ context.Context, id string) (string, bool, e
 	return "", false, nil
 }
 
-func (s *MemoryURLStorage) GetUserURLs(ctx context.Context, userID int) (models.BatchUserURLs, error) {
+func (s *MemoryURLStorage) GetUserURLs(_ context.Context, userID int) (models.BatchUserURLs, error) {
 	var urls models.BatchUserURLs
 	for k, v := range s.urls[userID] {
 		urls = append(urls, models.UserURL{

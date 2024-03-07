@@ -12,6 +12,7 @@ import (
 
 	"github.com/vook88/go-url-shortener/internal/authn"
 	"github.com/vook88/go-url-shortener/internal/config"
+	"github.com/vook88/go-url-shortener/internal/logger"
 	"github.com/vook88/go-url-shortener/internal/server"
 	storage2 "github.com/vook88/go-url-shortener/internal/storage"
 )
@@ -20,7 +21,8 @@ func setupHandler() *server.Handler {
 	ctx := context.Background()
 	c := config.Config{}
 	mockStorage, _ := storage2.New(ctx, &c)
-	return server.NewHandler(ctx, "https://example.com", mockStorage)
+	log := logger.New(0)
+	return server.NewHandler(ctx, "https://example.com", mockStorage, log)
 }
 
 func TestGenerateShortUrl(t *testing.T) {
